@@ -1,0 +1,34 @@
+name: Checks
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  build_and_test:
+    name: Rust project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          lfs: true
+          submodules: recursive
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt clippy
+
+      - name: Rustfmt
+        run: cargo fmt --check
+
+      - name: Cargo test
+        run: cargo test --locked
+
+      - name: Cargo build
+        run: cargo build --locked
+
+      - name: Clippy
+        run: cargo clippy

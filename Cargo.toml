@@ -1,0 +1,9 @@
+[package]
+name = "silero"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+ndarray = "0.15.6"
+ort = "2.0.0-rc.4"
