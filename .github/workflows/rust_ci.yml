@@ -25,10 +25,10 @@ jobs:
         run: cargo fmt --check
 
       - name: Cargo test
-        run: cargo test --locked
+        run: cargo test
 
       - name: Cargo build
-        run: cargo build --locked
+        run: cargo build
 
       - name: Clippy
         run: cargo clippy
