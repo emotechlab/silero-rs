@@ -1,6 +1,9 @@
 [package]
 name = "silero"
 version = "0.1.0"
+repository = "https://github.com/emotechlab/Silero"
+readme = "README.md"
+license = "MIT"
 edition = "2021"
 
 [dependencies]

@@ -1,7 +1,10 @@
+#![doc = include_str!("../README.md")]
 use anyhow::{bail, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::{GraphOptimizationLevel, Session};
 
+/// Parameters used to configure a vad session. These will determine the sensitivity and switching
+/// speed of detection.
 #[derive(Clone, Copy, Debug)]
 pub struct VadConfig {
     pub positive_speech_threshold: f32,
@@ -13,15 +16,19 @@ pub struct VadConfig {
 }
 
 impl VadConfig {
+    /// Gets the number of audio samples in an input frame
     pub fn get_frame_samples(&self) -> usize {
         (30_f32 / 1000_f32 * self.sample_rate as f32) as usize // 30ms * sample_rate Hz
     }
 
+    /// Gets the number of frames for a given duration in milliseconds
     pub fn get_frames(length_ms: usize) -> usize {
         length_ms / 30
     }
 }
 
+/// A VAD session create one of these for each audio stream you want to detect voice activity on
+/// and feed the audio into it.
 #[derive(Debug)]
 pub struct VadSession {
     config: VadConfig,
@@ -36,6 +43,7 @@ pub struct VadSession {
     speech_end: Option<usize>,
 }
 
+/// Current state of the VAD (speaking or silent)
 #[derive(Clone, Debug)]
 enum VadState {
     Speech {
