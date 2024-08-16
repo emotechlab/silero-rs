@@ -251,3 +251,13 @@ impl Default for VadConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_loads() {
+        let mut sesion = VadSession::new(VadConfig::default()).unwrap();
+    }
+}
