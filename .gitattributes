@@ -1,1 +1,0 @@
-models/silero_vad.onnx filter=lfs diff=lfs merge=lfs -text
