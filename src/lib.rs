@@ -1,7 +1,8 @@
 #![doc = include_str!("../README.md")]
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::{GraphOptimizationLevel, Session};
+use std::path::Path;
 
 /// Parameters used to configure a vad session. These will determine the sensitivity and switching
 /// speed of detection.
@@ -68,14 +69,13 @@ pub enum VadTransition {
 }
 
 impl VadSession {
-    pub fn new(config: VadConfig) -> Result<Self> {
-        if ![8000_usize, 16000].contains(&config.sample_rate) {
-            bail!("Unsupported sample rate, use 8000 or 16000!");
-        }
-        let model_bytes: &[u8] = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/models/silero_vad.onnx"
-        ));
+    pub fn new_from_path(file: impl AsRef<Path>, config: VadConfig) -> Result<Self> {
+        let bytes = std::fs::read(file.as_ref())
+            .with_context(|| format!("Couldn't read onnx file: {}", file.as_ref().display()))?;
+        Self::new_from_bytes(&bytes, config)
+    }
+
+    pub fn new_from_bytes(model_bytes: &[u8], config: VadConfig) -> Result<Self> {
         let model = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level3)?
             .with_intra_threads(4)?
@@ -96,6 +96,18 @@ impl VadSession {
             speech_start: None,
             speech_end: None,
         })
+    }
+
+    #[cfg(feature = "static-model")]
+    pub fn new(config: VadConfig) -> Result<Self> {
+        if ![8000_usize, 16000].contains(&config.sample_rate) {
+            bail!("Unsupported sample rate, use 8000 or 16000!");
+        }
+        let model_bytes: &[u8] = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/models/silero_vad.onnx"
+        ));
+        Self::new_from_bytes(model_bytes, config)
     }
 
     /// Advance the VAD state machine with an audio frame. Keep between 30-96ms in length.
@@ -258,6 +270,8 @@ mod tests {
 
     #[test]
     fn model_loads() {
-        let mut sesion = VadSession::new(VadConfig::default()).unwrap();
+        let _sesion = VadSession::new(VadConfig::default()).unwrap();
+        let _sesion =
+            VadSession::new_from_path("models/silero_vad.onnx", VadConfig::default()).unwrap();
     }
 }
