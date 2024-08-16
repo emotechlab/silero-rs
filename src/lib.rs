@@ -69,7 +69,7 @@ pub enum VadTransition {
 }
 
 impl VadSession {
-    pub fn new_from_file(file: impl AsRef<Path>, config: VadConfig) -> Result<Self> {
+    pub fn new_from_path(file: impl AsRef<Path>, config: VadConfig) -> Result<Self> {
         let bytes = std::fs::read(file.as_ref())
             .with_context(|| format!("Couldn't read onnx file: {}", file.as_ref().display()))?;
         Self::new_from_bytes(&bytes, config)
@@ -270,6 +270,8 @@ mod tests {
 
     #[test]
     fn model_loads() {
-        let mut sesion = VadSession::new(VadConfig::default()).unwrap();
+        let _sesion = VadSession::new(VadConfig::default()).unwrap();
+        let _sesion =
+            VadSession::new_from_path("models/silero_vad.onnx", VadConfig::default()).unwrap();
     }
 }
