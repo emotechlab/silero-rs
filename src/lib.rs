@@ -2,6 +2,7 @@
 use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::{GraphOptimizationLevel, Session};
+use std::ops::Range;
 use std::path::Path;
 
 /// Parameters used to configure a vad session. These will determine the sensitivity and switching
@@ -110,14 +111,45 @@ impl VadSession {
         Self::new_from_bytes(model_bytes, config)
     }
 
+    /// Pass in some audio to the VAD and return a list of any speech transitions that happened
+    /// during the segment.
+    pub fn process(&mut self, audio_frame: &[f32]) -> Result<Vec<VadTransition>> {
+        const VAD_BUFFER_MS: usize = 30; // TODO This should be configurable
+        self.session_audio.extend_from_slice(audio_frame);
+
+        let vad_segment_length = VAD_BUFFER_MS * self.config.sample_rate / 1000;
+        let num_chunks = self.session_audio.len() / vad_segment_length;
+        let start_chunk = self.processed_samples;
+
+        let mut transitions = vec![];
+
+        for i in start_chunk..num_chunks {
+            let start_idx = i * vad_segment_length;
+            // we might not be getting audio chunks in perfect multiples of 30ms, so let the
+            // last frame accommodate the remainder. This adds a bit of non-determinism based on
+            // audio size but it does let us more eagerly process audio.
+            let sample_range = if i < num_chunks - 1 {
+                start_idx..(start_idx + vad_segment_length)
+            } else {
+                start_idx..self.session_audio.len()
+            };
+
+            let vad_result = self.process_internal(sample_range)?;
+
+            if let Some(vad_ev) = vad_result {
+                transitions.push(vad_ev);
+            }
+        }
+        Ok(transitions)
+    }
+
     /// Advance the VAD state machine with an audio frame. Keep between 30-96ms in length.
     /// Return indicates if a transition from speech to silence (or silence to speech) occurred.
     ///
     /// Important: don't implement your own endpointing logic.
     /// Instead, when a `SpeechEnd` is returned, you can use the `get_current_speech()` method to retrieve the audio.
-    pub fn process(&mut self, audio_frame: &[f32]) -> Result<Option<VadTransition>> {
-        self.session_audio.extend_from_slice(audio_frame);
-
+    fn process_internal(&mut self, range: Range<usize>) -> Result<Option<VadTransition>> {
+        let audio_frame = &self.session_audio[range];
         let audio_tensor = Array2::from_shape_vec((1, audio_frame.len()), audio_frame.to_vec())?;
         let result = self.model.run(ort::inputs![
             audio_tensor.view(),
@@ -213,12 +245,17 @@ impl VadSession {
         Ok(vad_change)
     }
 
+    /// Returns whether the vad current believes the audio to contain speech
     pub fn is_speaking(&self) -> bool {
         matches!(self.state, VadState::Speech {
             min_frames_passed, ..
         } if min_frames_passed)
     }
 
+    /// Gets a buffer of the most recent active speech frames from the time the speech started to the
+    /// end of the speech. Parameters from `VadConfig` have already been applied here so this isn't
+    /// derived from the raw VAD inferences but instead after padding and filtering operations have
+    /// been applied.
     pub fn get_current_speech(&self) -> &[f32] {
         if let Some(speech_start) = self.speech_start {
             let speech_start = speech_start * (self.config.sample_rate / 1000);
@@ -233,14 +270,17 @@ impl VadSession {
         }
     }
 
+    /// Get how long the current speech is in samples.
     pub fn current_speech_len(&self) -> usize {
         self.get_current_speech().len()
     }
 
+    /// Get the current length of the VAD session.
     pub fn session_time(&self) -> usize {
         self.processed_samples / (self.config.sample_rate / 1000)
     }
 
+    /// Reset the status of the model
     pub fn reset(&mut self) {
         self.h_tensor = Array3::<f32>::zeros((2, 1, 64));
         self.c_tensor = Array3::<f32>::zeros((2, 1, 64));
@@ -268,10 +308,39 @@ impl Default for VadConfig {
 mod tests {
     use super::*;
 
+    /// Basic smoke test that the model loads correctly and we haven't committed rubbish to the
+    /// repo.
     #[test]
     fn model_loads() {
         let _sesion = VadSession::new(VadConfig::default()).unwrap();
         let _sesion =
             VadSession::new_from_path("models/silero_vad.onnx", VadConfig::default()).unwrap();
+    }
+
+    /// Too short tensors result in inference errors which we don't want to unnecessarily bubble up
+    /// to the user and instead handle in our buffering implementation. This test will check that a
+    /// short inference in the internal inference call bubbles up an error but when using the
+    /// public API no error is presented.
+    #[test]
+    fn short_audio_handling() {
+        let mut session = VadSession::new(VadConfig::default()).unwrap();
+
+        let short_audio = vec![0.0; 160];
+
+        session.session_audio = short_audio.clone();
+        assert!(session.process_internal(0..160).is_err());
+        session.session_audio.clear();
+        assert!(session.process(&short_audio).unwrap().is_empty());
+    }
+
+    /// Check that a long enough packet of just zeros gets an inference and it doesn't flag as
+    /// transitioning to speech
+    #[test]
+    fn silence_handling() {
+        let mut session = VadSession::new(VadConfig::default()).unwrap();
+        let silence = vec![0.0; 30 * 16]; // 30ms of silence
+
+        assert!(session.process(&silence).unwrap().is_empty());
+        assert_eq!(session.processed_samples, silence.len());
     }
 }
