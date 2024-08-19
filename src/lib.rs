@@ -119,7 +119,7 @@ impl VadSession {
 
         let vad_segment_length = VAD_BUFFER_MS * self.config.sample_rate / 1000;
         let num_chunks = self.session_audio.len() / vad_segment_length;
-        let start_chunk = self.processed_samples;
+        let start_chunk = self.processed_samples / vad_segment_length;
 
         let mut transitions = vec![];
 
