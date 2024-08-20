@@ -317,7 +317,7 @@ impl VadSession {
     /// measure is a raw unprocessed look of how many segments since the last speech are below the
     /// negative speech threshold.
     pub fn end_silence_duration(&self) -> Duration {
-        Duration::from_millis(self.silent_samples / (self.config.sample_rate / 1000) as u64)
+        Duration::from_millis((self.silent_samples / (self.config.sample_rate / 1000)) as u64)
     }
 }
 
