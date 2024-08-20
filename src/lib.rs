@@ -4,6 +4,7 @@ use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::{GraphOptimizationLevel, Session};
 use std::ops::Range;
 use std::path::Path;
+use std::time::Duration;
 
 /// Parameters used to configure a vad session. These will determine the sensitivity and switching
 /// speed of detection.
@@ -303,12 +304,20 @@ impl VadSession {
         self.state = VadState::Silence;
     }
 
-    /// Returns the length of the end silence. The VAD may be showing this as speaking because of
+    /// Returns the length of the end silence in number of samples. The VAD may be showing this as
+    /// speaking because of redemption frames or other parameters that slow down the speed it can
+    /// switch at. But this measure is a raw unprocessed look of how many segments since the last
+    /// speech are below the negative speech threshold.
+    pub fn end_silence_samples(&self) -> usize {
+        self.silent_samples
+    }
+
+    /// Returns the duration of the end silence. The VAD may be showing this as speaking because of
     /// redemption frames or other parameters that slow down the speed it can switch at. But this
     /// measure is a raw unprocessed look of how many segments since the last speech are below the
     /// negative speech threshold.
-    pub fn end_silence_length(&self) -> usize {
-        self.silent_samples
+    pub fn end_silence_duration(&self) -> Duration {
+        Duration::from_millis(self.silent_samples / (self.config.sample_rate / 1000) as u64)
     }
 }
 
