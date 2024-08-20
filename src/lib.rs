@@ -41,6 +41,7 @@ pub struct VadSession {
     state: VadState,
     session_audio: Vec<f32>,
     processed_samples: usize,
+    silent_samples: usize,
     speech_start: Option<usize>,
     speech_end: Option<usize>,
 }
@@ -70,12 +71,15 @@ pub enum VadTransition {
 }
 
 impl VadSession {
+    /// Create a new VAD session loading an onnx file from the specified path and using the
+    /// provided config.
     pub fn new_from_path(file: impl AsRef<Path>, config: VadConfig) -> Result<Self> {
         let bytes = std::fs::read(file.as_ref())
             .with_context(|| format!("Couldn't read onnx file: {}", file.as_ref().display()))?;
         Self::new_from_bytes(&bytes, config)
     }
 
+    /// Create a new VAD session loading an onnx file from memory and using the provided config.
     pub fn new_from_bytes(model_bytes: &[u8], config: VadConfig) -> Result<Self> {
         let model = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level3)?
@@ -99,6 +103,8 @@ impl VadSession {
         })
     }
 
+    /// Create a new VAD session using the provided config. The ONNX file has been statically
+    /// embedded within the library so this will increase binary size by 1.7M.
     #[cfg(feature = "static-model")]
     pub fn new(config: VadConfig) -> Result<Self> {
         if ![8000_usize, 16000].contains(&config.sample_rate) {
@@ -150,7 +156,8 @@ impl VadSession {
     /// Instead, when a `SpeechEnd` is returned, you can use the `get_current_speech()` method to retrieve the audio.
     fn process_internal(&mut self, range: Range<usize>) -> Result<Option<VadTransition>> {
         let audio_frame = &self.session_audio[range];
-        let audio_tensor = Array2::from_shape_vec((1, audio_frame.len()), audio_frame.to_vec())?;
+        let samples = audio_frame.len();
+        let audio_tensor = Array2::from_shape_vec((1, samples), audio_frame.to_vec())?;
         let result = self.model.run(ort::inputs![
             audio_tensor.view(),
             self.sample_rate_tensor.view(),
@@ -185,6 +192,12 @@ impl VadSession {
             .unwrap();
 
         let mut vad_change = None;
+
+        if prob < self.config.negative_speech_threshold {
+            self.silent_samples += samples;
+        } else {
+            self.silent_samples = 0;
+        }
 
         match self.state {
             VadState::Silence => {
@@ -287,6 +300,14 @@ impl VadSession {
         self.speech_start = None;
         self.speech_end = None;
         self.state = VadState::Silence;
+    }
+
+    /// Returns the length of the end silence. The VAD may be showing this as speaking because of
+    /// redemption frames or other parameters that slow down the speed it can switch at. But this
+    /// measure is a raw unprocessed look of how many segments since the last speech are below the
+    /// negative speech threshold.
+    pub fn end_silence_length(&self) -> usize {
+        self.silent_samples
     }
 }
 
