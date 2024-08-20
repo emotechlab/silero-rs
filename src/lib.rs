@@ -366,9 +366,15 @@ mod tests {
         assert_eq!(session.processed_samples, silence.len());
     }
 
+    /// We only allow for 8khz and 16khz audio.
     #[test]
     fn reject_invalid_sample_rate() {
         let mut config = VadConfig::default();
+        config.sample_rate = 16000;
+        VadSession::new(config.clone()).unwrap();
+        config.sample_rate = 8000;
+        VadSession::new(config.clone()).unwrap();
+
         config.sample_rate += 1;
         assert!(VadSession::new(config.clone()).is_err());
         assert!(VadSession::new_from_path("models/silero_vad.onnx", config.clone()).is_err());
