@@ -81,6 +81,9 @@ impl VadSession {
 
     /// Create a new VAD session loading an onnx file from memory and using the provided config.
     pub fn new_from_bytes(model_bytes: &[u8], config: VadConfig) -> Result<Self> {
+        if ![8000_usize, 16000].contains(&config.sample_rate) {
+            bail!("Unsupported sample rate, use 8000 or 16000!");
+        }
         let model = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level3)?
             .with_intra_threads(4)?
@@ -108,9 +111,6 @@ impl VadSession {
     /// embedded within the library so this will increase binary size by 1.7M.
     #[cfg(feature = "static-model")]
     pub fn new(config: VadConfig) -> Result<Self> {
-        if ![8000_usize, 16000].contains(&config.sample_rate) {
-            bail!("Unsupported sample rate, use 8000 or 16000!");
-        }
         let model_bytes: &[u8] = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/models/silero_vad.onnx"
@@ -364,5 +364,16 @@ mod tests {
 
         assert!(session.process(&silence).unwrap().is_empty());
         assert_eq!(session.processed_samples, silence.len());
+    }
+
+    #[test]
+    fn reject_invalid_sample_rate() {
+        let mut config = VadConfig::default();
+        config.sample_rate += 1;
+        assert!(VadSession::new(config.clone()).is_err());
+        assert!(VadSession::new_from_path("models/silero_vad.onnx", config.clone()).is_err());
+
+        let bytes = std::fs::read("models/silero_vad.onnx").unwrap();
+        assert!(VadSession::new_from_bytes(&bytes, config).is_err());
     }
 }
