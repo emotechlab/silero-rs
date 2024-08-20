@@ -98,6 +98,7 @@ impl VadSession {
             state: VadState::Silence,
             session_audio: vec![],
             processed_samples: 0,
+            silent_samples: 0,
             speech_start: None,
             speech_end: None,
         })
