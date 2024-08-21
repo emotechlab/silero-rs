@@ -286,8 +286,16 @@ impl VadSession {
     }
 
     /// Get how long the current speech is in samples.
-    pub fn current_speech_len(&self) -> usize {
+    pub fn current_speech_samples(&self) -> usize {
         self.get_current_speech().len()
+    }
+
+    /// Returns the duration of the current speech segment. It is possible for this and
+    /// `Self::current_silence_duration` to both report >0s at  the same time as this takes into
+    /// account the switching and padding parameters of the VAD whereas the silence measure ignores
+    /// them instead of just focusing on raw network output.
+    pub fn current_speech_duration(&self) -> Duration {
+        Duration::from_millis((self.current_speech_samples() / (self.config.sample_rate / 1000)) as u64)
     }
 
     /// Get the current length of the VAD session.
@@ -308,7 +316,7 @@ impl VadSession {
     /// speaking because of redemption frames or other parameters that slow down the speed it can
     /// switch at. But this measure is a raw unprocessed look of how many segments since the last
     /// speech are below the negative speech threshold.
-    pub fn end_silence_samples(&self) -> usize {
+    pub fn current_silence_samples(&self) -> usize {
         self.silent_samples
     }
 
@@ -316,7 +324,7 @@ impl VadSession {
     /// redemption frames or other parameters that slow down the speed it can switch at. But this
     /// measure is a raw unprocessed look of how many segments since the last speech are below the
     /// negative speech threshold.
-    pub fn end_silence_duration(&self) -> Duration {
+    pub fn current_silence_duration(&self) -> Duration {
         Duration::from_millis((self.silent_samples / (self.config.sample_rate / 1000)) as u64)
     }
 }
