@@ -295,7 +295,9 @@ impl VadSession {
     /// account the switching and padding parameters of the VAD whereas the silence measure ignores
     /// them instead of just focusing on raw network output.
     pub fn current_speech_duration(&self) -> Duration {
-        Duration::from_millis((self.current_speech_samples() / (self.config.sample_rate / 1000)) as u64)
+        Duration::from_millis(
+            (self.current_speech_samples() / (self.config.sample_rate / 1000)) as u64,
+        )
     }
 
     /// Get the current length of the VAD session.
