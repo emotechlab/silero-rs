@@ -59,6 +59,7 @@ enum VadState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum VadTransition {
     SpeechStart {
         /// When the speech started, in milliseconds since the start of the VAD session.

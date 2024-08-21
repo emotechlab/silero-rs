@@ -1,0 +1,4 @@
+tests/audio/sample_1.wav filter=lfs diff=lfs merge=lfs -text
+tests/audio/sample_2.wav filter=lfs diff=lfs merge=lfs -text
+tests/audio/sample_3.wav filter=lfs diff=lfs merge=lfs -text
+tests/audio/sample_4.wav filter=lfs diff=lfs merge=lfs -text
