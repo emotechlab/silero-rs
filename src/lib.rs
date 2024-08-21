@@ -217,13 +217,13 @@ impl VadSession {
             }
             VadState::Speech {
                 start_ms,
-                redemption_passed: ref mut min_frames_passed,
+                ref mut redemption_passed,
                 ref mut speech_time,
             } => {
                 *speech_time +=
                     Duration::from_secs_f64(samples as f64 / self.config.sample_rate as f64);
-                if !*min_frames_passed && *speech_time > self.config.min_speech_time {
-                    *min_frames_passed = true;
+                if !*redemption_passed && *speech_time > self.config.min_speech_time {
+                    *redemption_passed = true;
                     // TODO: the pre speech padding should not cross over the previous speech->silence
                     // transition, if there was one
                     vad_change = Some(VadTransition::SpeechStart {
@@ -234,11 +234,11 @@ impl VadSession {
                 }
 
                 if prob < self.config.negative_speech_threshold {
-                    if !*min_frames_passed {
+                    if !*redemption_passed {
                         self.state = VadState::Silence;
                     } else {
                         if current_silence > self.config.redemption_time {
-                            if *min_frames_passed {
+                            if *redemption_passed {
                                 let speech_end = (self.processed_samples + audio_frame.len())
                                     / (self.config.sample_rate / 1000);
                                 vad_change = Some(VadTransition::SpeechEnd {
