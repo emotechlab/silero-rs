@@ -20,10 +20,116 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Default, Debug, PartialEq, Deserialize, Serialize)]
+struct Summary {
+    config: VadConfig,
+    summary: BTreeMap<PathBuf, Report>,
+}
+
 #[derive(Default, Debug, PartialEq, Eq, Deserialize, Serialize)]
 struct Report {
     transitions: Vec<VadTransition>,
-    silence_samples: Vec<usize>,
+    current_silence_samples: Vec<usize>,
+    current_speech_samples: Vec<usize>,
+}
+
+#[test]
+fn chunk_50_default_params_16k() {
+    run_snapshot_test(50, VadConfig::default(), "default");
+}
+
+#[test]
+fn chunk_50_default_params_8k() {
+    let mut config = VadConfig::default();
+    config.sample_rate = 8000;
+    run_snapshot_test(50, config, "default");
+}
+
+#[test]
+fn chunk_30_default_params_16k() {
+    run_snapshot_test(30, VadConfig::default(), "default");
+}
+
+#[test]
+fn chunk_30_default_params_8k() {
+    let mut config = VadConfig::default();
+    config.sample_rate = 8000;
+    run_snapshot_test(30, config, "default");
+}
+
+fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
+    let audios = get_audios();
+
+    let chunk_size = get_chunk_size(config.sample_rate, chunk_ms);
+
+    let mut summary = BTreeMap::new();
+
+    for audio in audios.iter() {
+        let mut session = VadSession::new(config.clone()).unwrap();
+        let mut report = Report::default();
+        let step = if config.sample_rate == 16000 {
+            1
+        } else {
+            2 // Other sample rates are invalid so we'll just work on less data
+        };
+        let samples: Vec<f32> = WavReader::open(&audio)
+            .unwrap()
+            .into_samples()
+            .step_by(step)
+            .map(|x| x.unwrap_or(0i16) as f32)
+            .collect();
+
+        let num_chunks = samples.len() / chunk_size;
+
+        for i in 0..num_chunks {
+            let start = i * chunk_size;
+            let end = if i < num_chunks - 1 {
+                start + chunk_size
+            } else {
+                samples.len()
+            };
+
+            let mut transitions = session.process(&samples[start..end]).unwrap();
+            report.transitions.append(&mut transitions);
+            report
+                .current_silence_samples
+                .push(session.current_silence_samples());
+            report
+                .current_speech_samples
+                .push(session.current_speech_samples());
+        }
+        summary.insert(audio.to_path_buf(), report);
+    }
+
+    let summary = Summary { summary, config };
+    let report = serde_json::to_string_pretty(&summary).unwrap();
+
+    let name = format!(
+        "chunk_{}_{}Hz_{}.json",
+        chunk_ms, config.sample_rate, config_name
+    );
+
+    let current_report = Path::new("target").join(&name);
+    let baseline_report = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data")).join(&name);
+
+    fs::write(&current_report, &report).unwrap();
+
+    println!("Loading snapshot from: {}", baseline_report.display());
+    let expected = fs::read_to_string(&baseline_report).unwrap();
+    let expected: Summary = serde_json::from_str(&expected).unwrap();
+
+    println!(
+        "Checking current results {} with snapshot {}",
+        current_report.display(),
+        baseline_report.display()
+    );
+
+    // TODO here we want to be a bit nicer and iterate over the files and either:
+    // 1. Iterate over the files and compare each one and generate python script commands to plot
+    //    and inspect
+    // 2. Have our python script be able to take two reports and generate plots that only concern
+    //    the deltas!
+    assert_eq!(expected, summary);
 }
 
 fn get_audios() -> Vec<PathBuf> {
@@ -41,57 +147,4 @@ fn get_audios() -> Vec<PathBuf> {
 
 fn get_chunk_size(sample_rate: usize, chunk_ms: usize) -> usize {
     (sample_rate * chunk_ms) / 1000
-}
-
-#[test]
-fn chunk_30_default_params_16k() {
-    let audios = get_audios();
-
-    let config = VadConfig::default();
-
-    let chunk_size = get_chunk_size(16000, 30);
-
-    let mut summary = BTreeMap::new();
-
-    for audio in audios.iter() {
-        let mut report = Report::default();
-        let mut session = VadSession::new(config.clone()).unwrap();
-        let samples: Vec<f32> = WavReader::open(&audio)
-            .unwrap()
-            .into_samples()
-            .map(|x| x.unwrap_or(0i16) as f32)
-            .collect();
-
-        let num_chunks = samples.len() / chunk_size;
-
-        for i in 0..num_chunks {
-            let start = i * chunk_size;
-            let end = if i < num_chunks - 1 {
-                start + chunk_size
-            } else {
-                samples.len()
-            };
-
-            let mut transitions = session.process(&samples[start..end]).unwrap();
-            report.transitions.append(&mut transitions);
-            report
-                .silence_samples
-                .push(session.current_silence_samples());
-        }
-        summary.insert(audio.to_path_buf(), report);
-    }
-
-    let report = serde_json::to_string_pretty(&summary).unwrap();
-
-    let name = "chunk_30_default_params_16k.json";
-
-    fs::write(Path::new("target").join(name), &report).unwrap();
-
-    let expected = fs::read_to_string(
-        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data")).join(name),
-    )
-    .unwrap();
-    let expected: BTreeMap<PathBuf, Report> = serde_json::from_str(&expected).unwrap();
-
-    assert_eq!(expected, summary);
 }

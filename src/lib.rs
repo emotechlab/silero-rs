@@ -8,7 +8,8 @@ use std::time::Duration;
 
 /// Parameters used to configure a vad session. These will determine the sensitivity and switching
 /// speed of detection.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VadConfig {
     pub positive_speech_threshold: f32,
     pub negative_speech_threshold: f32,
@@ -128,6 +129,10 @@ impl VadSession {
         let vad_segment_length = VAD_BUFFER_MS * self.config.sample_rate / 1000;
         let num_chunks = self.session_audio.len() / vad_segment_length;
         let start_chunk = self.processed_samples / vad_segment_length;
+        println!(
+            "{}: {}/{}",
+            start_chunk, self.processed_samples, vad_segment_length
+        );
 
         let mut transitions = vec![];
 
@@ -141,7 +146,7 @@ impl VadSession {
             } else {
                 start_idx..self.session_audio.len()
             };
-
+            println!("Range: {:?}", sample_range);
             let vad_result = self.process_internal(sample_range)?;
 
             if let Some(vad_ev) = vad_result {
@@ -305,11 +310,13 @@ impl VadSession {
     }
 
     /// Reset the status of the model
+    // TODO should this reset the audio buffer as well?
     pub fn reset(&mut self) {
         self.h_tensor = Array3::<f32>::zeros((2, 1, 64));
         self.c_tensor = Array3::<f32>::zeros((2, 1, 64));
         self.speech_start = None;
         self.speech_end = None;
+        self.silent_samples = 0;
         self.state = VadState::Silence;
     }
 

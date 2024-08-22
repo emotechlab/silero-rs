@@ -10,7 +10,7 @@ git lfs to clone the repository to run the tests.
 
 To run tests do:
 
-```
+```text
 cargo test --all-features
 ```
 
