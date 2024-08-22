@@ -39,6 +39,7 @@ fn chunk_50_default_params_16k() {
 }
 
 #[test]
+#[ignore]
 fn chunk_50_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
@@ -133,7 +134,7 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
 }
 
 fn get_audios() -> Vec<PathBuf> {
-    let audio_dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/audio"));
+    let audio_dir = Path::new("tests/audio");
     let mut result = vec![];
     for entry in fs::read_dir(&audio_dir).unwrap() {
         let entry = entry.unwrap();

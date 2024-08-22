@@ -17,7 +17,7 @@
     }
   },
   "summary": {
-    "/home/xd009642/work/silero-rs/tests/audio/sample_1.wav": {
+    "tests/audio/sample_1.wav": {
       "transitions": [],
       "current_silence_samples": [
         240,
@@ -330,7 +330,7 @@
         0
       ]
     },
-    "/home/xd009642/work/silero-rs/tests/audio/sample_2.wav": {
+    "tests/audio/sample_2.wav": {
       "transitions": [],
       "current_silence_samples": [
         240,
@@ -687,7 +687,7 @@
         0
       ]
     },
-    "/home/xd009642/work/silero-rs/tests/audio/sample_3.wav": {
+    "tests/audio/sample_3.wav": {
       "transitions": [
         {
           "SpeechStart": {
@@ -939,7 +939,7 @@
         8400
       ]
     },
-    "/home/xd009642/work/silero-rs/tests/audio/sample_4.wav": {
+    "tests/audio/sample_4.wav": {
       "transitions": [
         {
           "SpeechStart": {
