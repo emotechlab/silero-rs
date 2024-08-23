@@ -26,16 +26,12 @@ with open(args.input) as f:
     silence_samples = vad["current_silence_samples"]
     speech_samples = vad["current_speech_samples"]
     for segment in vad["transitions"]:
-        print(segment)
         if "SpeechStart" in segment:
             start = int(segment["SpeechStart"]["timestamp_ms"])
             end = None
-            print("Grabbing start")
         elif "SpeechEnd" in segment:
-            print("Grabbing end")
             end = int(segment["SpeechEnd"]["timestamp_ms"])
             if start is not None and end is not None:
-                print("I've got both")
                 speech_segments.append((start, end))
                 start = None
                 end = None
@@ -47,7 +43,6 @@ t_audio = n_samples/sample_freq
 
 duration = 1000*n_samples / sample_freq
 if start is not None and end is None:
-    print("Adding")
     end = int(round(duration))
     speech_segments.append((start, end))
 
@@ -70,8 +65,6 @@ ax2.plot(speech_samples, label = "Current speech samples")
 ax2.legend()
 
 fill_regions = [False] * len(signal_array)
-
-has_printed = False
 
 for i in range(len(signal_array)):
     timestamp =  1000*i/sample_freq

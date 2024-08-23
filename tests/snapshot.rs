@@ -78,7 +78,7 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
             .unwrap()
             .into_samples()
             .step_by(step)
-            .map(|x| x.unwrap_or(0i16) as f32)
+            .map(|x| x.unwrap_or(0i16) as f32 / (i16::MAX as f32))
             .collect();
 
         let num_chunks = samples.len() / chunk_size;
