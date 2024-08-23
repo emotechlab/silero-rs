@@ -8,7 +8,8 @@ use std::time::Duration;
 
 /// Parameters used to configure a vad session. These will determine the sensitivity and switching
 /// speed of detection.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VadConfig {
     pub positive_speech_threshold: f32,
     pub negative_speech_threshold: f32,
@@ -59,6 +60,7 @@ enum VadState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum VadTransition {
     SpeechStart {
         /// When the speech started, in milliseconds since the start of the VAD session.
@@ -122,25 +124,27 @@ impl VadSession {
     /// during the segment.
     pub fn process(&mut self, audio_frame: &[f32]) -> Result<Vec<VadTransition>> {
         const VAD_BUFFER_MS: usize = 30; // TODO This should be configurable
-        self.session_audio.extend_from_slice(audio_frame);
-
         let vad_segment_length = VAD_BUFFER_MS * self.config.sample_rate / 1000;
-        let num_chunks = self.session_audio.len() / vad_segment_length;
-        let start_chunk = self.processed_samples / vad_segment_length;
+
+        let unprocessed = self.session_audio.len() - self.processed_samples;
+        let num_chunks = (unprocessed + audio_frame.len()) / vad_segment_length;
+
+        self.session_audio.extend_from_slice(audio_frame);
 
         let mut transitions = vec![];
 
-        for i in start_chunk..num_chunks {
-            let start_idx = i * vad_segment_length;
+        for i in 0..num_chunks {
             // we might not be getting audio chunks in perfect multiples of 30ms, so let the
             // last frame accommodate the remainder. This adds a bit of non-determinism based on
             // audio size but it does let us more eagerly process audio.
+            //
+            // processed_samples is updated in process_internal so always points to the index of
+            // the next sample to go from.
             let sample_range = if i < num_chunks - 1 {
-                start_idx..(start_idx + vad_segment_length)
+                self.processed_samples..(self.processed_samples + vad_segment_length)
             } else {
-                start_idx..self.session_audio.len()
+                self.processed_samples..self.session_audio.len()
             };
-
             let vad_result = self.process_internal(sample_range)?;
 
             if let Some(vad_ev) = vad_result {
@@ -239,7 +243,8 @@ impl VadSession {
                     } else {
                         if current_silence > self.config.redemption_time {
                             if *redemption_passed {
-                                let speech_end = (self.processed_samples + audio_frame.len())
+                                let speech_end = (self.processed_samples + audio_frame.len()
+                                    - self.silent_samples)
                                     / (self.config.sample_rate / 1000);
                                 vad_change = Some(VadTransition::SpeechEnd {
                                     timestamp_ms: speech_end,
@@ -304,11 +309,13 @@ impl VadSession {
     }
 
     /// Reset the status of the model
+    // TODO should this reset the audio buffer as well?
     pub fn reset(&mut self) {
         self.h_tensor = Array3::<f32>::zeros((2, 1, 64));
         self.c_tensor = Array3::<f32>::zeros((2, 1, 64));
         self.speech_start = None;
         self.speech_end = None;
+        self.silent_samples = 0;
         self.state = VadState::Silence;
     }
 
@@ -333,8 +340,8 @@ impl Default for VadConfig {
     fn default() -> Self {
         Self {
             // https://github.com/ricky0123/vad/blob/ea584aaf66d9162fb19d9bfba607e264452980c3/packages/_common/src/frame-processor.ts#L52
-            positive_speech_threshold: 0.35,
-            negative_speech_threshold: 0.25,
+            positive_speech_threshold: 0.5,
+            negative_speech_threshold: 0.35,
             pre_speech_pad: Duration::from_millis(600),
             redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
