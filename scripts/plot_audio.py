@@ -1,3 +1,20 @@
+#!/usr/bin/env -S pipx run
+# /// script
+# dependencies = [
+#     "contourpy==1.2.1",
+#     "cycler==0.12.1",
+#     "fonttools==4.53.1",
+#     "kiwisolver==1.4.5",
+#     "matplotlib==3.9.2",
+#     "numpy==2.1.0",
+#     "packaging==24.1",
+#     "pillow==10.4.0",
+#     "pyparsing==3.1.2",
+#     "python-dateutil==2.9.0.post0",
+#     "six==1.16.0",
+#     "Wave==0.0.2"
+# ]
+# ///
 import wave
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,6 +24,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--audio", "-a", help="audio file to plot")
 parser.add_argument("--input", "-i", help="test data file to plot")
+parser.add_argument("--output", "-o", help="file to save plot to (optional)")
 
 args = parser.parse_args() 
 
@@ -86,4 +104,7 @@ for i in range(len(signal_array)):
 
 ax.fill_between(times, min(signal_array), max(signal_array), where=fill_regions, alpha=0.5)
 
-plt.show()
+if args.output:
+    plt.savefig(args.output)
+else:
+    plt.show()
