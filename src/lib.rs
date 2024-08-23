@@ -144,7 +144,6 @@ impl VadSession {
             } else {
                 self.processed_samples..self.session_audio.len()
             };
-            println!("Range: {:?}", sample_range);
             let vad_result = self.process_internal(sample_range)?;
 
             if let Some(vad_ev) = vad_result {
