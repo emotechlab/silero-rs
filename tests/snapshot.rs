@@ -70,7 +70,6 @@ fn chunk_20_default_params_8k() {
     run_snapshot_test(20, config, "default");
 }
 
-
 fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
     let audios = get_audios();
 
