@@ -40,7 +40,6 @@ fn chunk_50_default_params_16k() {
 }
 
 #[test]
-#[ignore]
 fn chunk_50_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
