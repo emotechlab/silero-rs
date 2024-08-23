@@ -17,6 +17,11 @@ speech_segments = []
 silence_samples = []
 speech_samples = []
 
+def rust_duration_to_seconds(obj):
+    return int(obj["secs"]) + (float(obj["nanos"]) / 1000000000.0)
+
+redemption_time = 0
+
 with open(args.input) as f:
     data = json.load(f)
     start = None
@@ -25,6 +30,8 @@ with open(args.input) as f:
     vad = data["summary"][args.audio]
     silence_samples = vad["current_silence_samples"]
     speech_samples = vad["current_speech_samples"]
+    redemption_time = rust_duration_to_seconds(data["config"]["redemption_time"])
+    print(f"redemption time: {redemption_time}")
     for segment in vad["transitions"]:
         if "SpeechStart" in segment:
             start = int(segment["SpeechStart"]["timestamp_ms"])
@@ -40,6 +47,8 @@ with open(args.input) as f:
 sample_freq = wav_obj.getframerate()
 n_samples = wav_obj.getnframes()
 t_audio = n_samples/sample_freq
+
+redemption_time = sample_freq * redemption_time
 
 duration = 1000*n_samples / sample_freq
 if start is not None and end is None:
@@ -62,6 +71,7 @@ ax.set(xlabel="Time (s)", ylabel="Signal", title="Audio")
 
 ax2.plot(silence_samples, label = "Current silence samples")
 ax2.plot(speech_samples, label = "Current speech samples")
+ax2.axhline(y=redemption_time, color = 'r', linestyle = 'dashed', label = "redemption_time")
 ax2.legend()
 
 fill_regions = [False] * len(signal_array)
