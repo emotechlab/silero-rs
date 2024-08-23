@@ -1,7 +1,7 @@
 //! Snapshot tests of the VAD behaviour.
 //!
 //! The general approach of this is snapshot testing like we might see with a crate like
-//! [insta](crates.io/crates/insta) but we're not going to use insta? Why because it is a bit
+//! [insta](crates.io/crates/insta) but we're not going to use insta. Why? Because it is a bit
 //! fiddly to fit it into a workflow where test failures may need an analysis of the data and
 //! neural network output to see if the snapshot should be updated. And without being able to make
 //! use of the diff-review and accepting tools it seems easier to roll our own solution specialised
