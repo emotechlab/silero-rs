@@ -143,11 +143,12 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
     );
 
     // Lets do some basic checks first just to make sure we're not complete trash
-    println!("Checking baseline vs current vad config");
+    println!("Checking snapshot is generated with same configuration!");
     compare_configs(&summary.config, &expected.config);
     assert_eq!(summary.input_size_ms, expected.input_size_ms);
 
     let mut failing_files = vec![];
+    println!();
 
     for sample in summary.summary.keys() {
         let baseline = &summary.summary[sample];
@@ -156,19 +157,19 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
         if baseline != current {
             println!("{} is failing", sample.display());
             if baseline.transitions != current.transitions {
-                println!("Difference in transitons list!");
+                println!("\tDifference in transitons list!");
             }
             if baseline.current_silence_samples != current.current_silence_samples {
-                println!("Difference in silence lengths");
+                println!("\tDifference in silence lengths");
             }
             if baseline.current_speech_samples != current.current_speech_samples {
-                println!("Difference in speech lengths");
+                println!("\tDifference in speech lengths");
             }
             failing_files.push(sample.to_path_buf());
         }
     }
-
     if !failing_files.is_empty() {
+        println!();
         println!("You have some failing files and targets. If you get a snapshot file and audio you can plot it via our plot_audio script e.g.");
         println!(
             "python3 scripts/plot_audio.py -a {} -i {}",
