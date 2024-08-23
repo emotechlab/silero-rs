@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Default, Debug, PartialEq, Deserialize, Serialize)]
 struct Summary {
+    input_size_ms: usize,
     config: VadConfig,
     summary: BTreeMap<PathBuf, Report>,
 }
@@ -102,7 +103,11 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
         summary.insert(audio.to_path_buf(), report);
     }
 
-    let summary = Summary { summary, config };
+    let summary = Summary {
+        input_size_ms: chunk_ms,
+        summary,
+        config,
+    };
     let report = serde_json::to_string_pretty(&summary).unwrap();
 
     let name = format!(

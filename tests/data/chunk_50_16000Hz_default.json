@@ -1,4 +1,5 @@
 {
+  "input_size_ms": 50,
   "config": {
     "positive_speech_threshold": 0.35,
     "negative_speech_threshold": 0.25,
