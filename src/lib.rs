@@ -124,27 +124,25 @@ impl VadSession {
     /// during the segment.
     pub fn process(&mut self, audio_frame: &[f32]) -> Result<Vec<VadTransition>> {
         const VAD_BUFFER_MS: usize = 30; // TODO This should be configurable
-        self.session_audio.extend_from_slice(audio_frame);
-
         let vad_segment_length = VAD_BUFFER_MS * self.config.sample_rate / 1000;
-        let num_chunks = self.session_audio.len() / vad_segment_length;
-        let start_chunk = self.processed_samples / vad_segment_length;
-        println!(
-            "{}: {}/{}",
-            start_chunk, self.processed_samples, vad_segment_length
-        );
+        
+        let num_chunks = audio_frame.len() / vad_segment_length;
+
+        self.session_audio.extend_from_slice(audio_frame);
 
         let mut transitions = vec![];
 
-        for i in start_chunk..num_chunks {
-            let start_idx = i * vad_segment_length;
+        for i in 0..num_chunks {
             // we might not be getting audio chunks in perfect multiples of 30ms, so let the
             // last frame accommodate the remainder. This adds a bit of non-determinism based on
             // audio size but it does let us more eagerly process audio.
+            //
+            // processed_samples is updated in process_internal so always points to the index of
+            // the next sample to go from.
             let sample_range = if i < num_chunks - 1 {
-                start_idx..(start_idx + vad_segment_length)
+                self.processed_samples..(self.processed_samples + vad_segment_length)
             } else {
-                start_idx..self.session_audio.len()
+                self.processed_samples..self.session_audio.len()
             };
             println!("Range: {:?}", sample_range);
             let vad_result = self.process_internal(sample_range)?;
