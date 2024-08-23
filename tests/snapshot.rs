@@ -13,6 +13,7 @@
 //! the audio folder as well.
 //!
 //! Also all test audios will be 16kHz to make it easy to test silero in both 16kHz and 8kHz modes.
+use approx::assert_ulps_eq;
 use hound::WavReader;
 use serde::{Deserialize, Serialize};
 use silero::*;
@@ -141,12 +142,51 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
         baseline_report.display()
     );
 
-    // TODO here we want to be a bit nicer and iterate over the files and either:
-    // 1. Iterate over the files and compare each one and generate python script commands to plot
-    //    and inspect
-    // 2. Have our python script be able to take two reports and generate plots that only concern
-    //    the deltas!
-    assert_eq!(expected, summary);
+    // Lets do some basic checks first just to make sure we're not complete trash
+    println!("Checking baseline vs current vad config");
+    compare_configs(&summary.config, &expected.config);
+    assert_eq!(summary.input_size_ms, expected.input_size_ms);
+
+    let mut failing_files = vec![];
+
+    for sample in summary.summary.keys() {
+        let baseline = &summary.summary[sample];
+        let current = &expected.summary[sample];
+
+        if baseline != current {
+            println!("{} is failing", sample.display());
+            if baseline.transitions != current.transitions {
+                println!("Difference in transitons list!");
+            }
+            if baseline.current_silence_samples != current.current_silence_samples {
+                println!("Difference in silence lengths");
+            }
+            if baseline.current_speech_samples != current.current_speech_samples {
+                println!("Difference in speech lengths");
+            }
+            failing_files.push(sample.to_path_buf());
+        }
+    }
+
+    if !failing_files.is_empty() {
+        println!("You have some failing files and targets. If you get a snapshot file and audio you can plot it via our plot_audio script e.g.");
+        println!(
+            "python3 scripts/plot_audio.py -a {} -i {}",
+            failing_files[0].display(),
+            current_report.display()
+        );
+
+        panic!("The following files are failing: {:?}", failing_files);
+    }
+}
+
+fn compare_configs(a: &VadConfig, b: &VadConfig) {
+    assert_ulps_eq!(a.positive_speech_threshold, b.positive_speech_threshold);
+    assert_ulps_eq!(a.negative_speech_threshold, b.negative_speech_threshold);
+    assert_eq!(a.pre_speech_pad, b.pre_speech_pad);
+    assert_eq!(a.redemption_time, b.redemption_time);
+    assert_eq!(a.sample_rate, b.sample_rate);
+    assert_eq!(a.min_speech_time, b.min_speech_time);
 }
 
 fn get_audios() -> Vec<PathBuf> {
