@@ -125,8 +125,9 @@ impl VadSession {
     pub fn process(&mut self, audio_frame: &[f32]) -> Result<Vec<VadTransition>> {
         const VAD_BUFFER_MS: usize = 30; // TODO This should be configurable
         let vad_segment_length = VAD_BUFFER_MS * self.config.sample_rate / 1000;
-        
-        let num_chunks = audio_frame.len() / vad_segment_length;
+
+        let unprocessed = self.session_audio.len() - self.processed_samples;
+        let num_chunks = (unprocessed + audio_frame.len()) / vad_segment_length;
 
         self.session_audio.extend_from_slice(audio_frame);
 
@@ -242,7 +243,8 @@ impl VadSession {
                     } else {
                         if current_silence > self.config.redemption_time {
                             if *redemption_passed {
-                                let speech_end = (self.processed_samples + audio_frame.len() - self.silent_samples)
+                                let speech_end = (self.processed_samples + audio_frame.len()
+                                    - self.silent_samples)
                                     / (self.config.sample_rate / 1000);
                                 vad_change = Some(VadTransition::SpeechEnd {
                                     timestamp_ms: speech_end,
