@@ -171,11 +171,13 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
     if !failing_files.is_empty() {
         println!();
         println!("You have some failing files and targets. If you get a snapshot file and audio you can plot it via our plot_audio script e.g.");
+        println!();
         println!(
             "python3 scripts/plot_audio.py -a {} -i {}",
             failing_files[0].display(),
             current_report.display()
         );
+        println!();
 
         panic!("The following files are failing: {:?}", failing_files);
     }
