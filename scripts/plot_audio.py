@@ -49,6 +49,7 @@ with open(args.input) as f:
     silence_samples = vad["current_silence_samples"]
     speech_samples = vad["current_speech_samples"]
     redemption_time = rust_duration_to_seconds(data["config"]["redemption_time"])
+    pre_speech_pad = rust_duration_to_seconds(data["config"]["pre_speech_pad"])
     print(f"redemption time: {redemption_time}")
     for segment in vad["transitions"]:
         if "SpeechStart" in segment:
@@ -66,10 +67,12 @@ sample_freq = wav_obj.getframerate()
 n_samples = wav_obj.getnframes()
 t_audio = n_samples/sample_freq
 
-redemption_time = sample_freq * redemption_time
+redemption_time_samples = sample_freq * redemption_time
 
 duration = 1000*n_samples / sample_freq
+finished_with_silence = True
 if start is not None and end is None:
+    finished_with_silence = False
     end = int(round(duration))
     speech_segments.append((start, end))
 
@@ -89,7 +92,32 @@ ax.set(xlabel="Time (s)", ylabel="Signal", title="Audio")
 
 ax2.plot(silence_samples, label = "Current silence samples")
 ax2.plot(speech_samples, label = "Current speech samples")
-ax2.axhline(y=redemption_time, color = 'r', linestyle = 'dashed', label = "redemption_time")
+labeled_start = False
+labeled_end = False
+for (i, (start, end)) in enumerate(speech_segments):
+    if start > 0:
+        ax.axvline(
+            start/1000+pre_speech_pad,
+            ymin=min(signal_array),
+            ymax=max(signal_array),
+            linestyle='dashed',
+            color = '#42f5c2',
+            label=None if labeled_start else "speech_start"
+        )
+        labeled_start = True
+    if not finished_with_silence and i==len(speech_segments)-1:
+        break 
+    ax.axvline(
+        end/1000+redemption_time,
+        ymin=min(signal_array),
+        ymax=max(signal_array),
+        linestyle='dashed',
+        color = '#f56f42',
+        label=None if labeled_end else "speech_end"
+    )
+    labeled_end = True
+ax.legend()
+ax2.axhline(y=redemption_time_samples, color = 'r', linestyle = 'dashed', label = "redemption_time")
 ax2.legend()
 
 fill_regions = [False] * len(signal_array)
