@@ -341,8 +341,8 @@ impl Default for VadConfig {
     fn default() -> Self {
         Self {
             // https://github.com/ricky0123/vad/blob/ea584aaf66d9162fb19d9bfba607e264452980c3/packages/_common/src/frame-processor.ts#L52
-            positive_speech_threshold: 0.35,
-            negative_speech_threshold: 0.25,
+            positive_speech_threshold: 0.5,
+            negative_speech_threshold: 0.35,
             pre_speech_pad: Duration::from_millis(600),
             redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
