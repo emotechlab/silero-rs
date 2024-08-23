@@ -1,4 +1,4 @@
-#!/usr/bin/env -S pipx run
+#!/usr/bin/env -S uv run
 # /// script
 # dependencies = [
 #     "contourpy==1.2.1",
