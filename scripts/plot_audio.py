@@ -117,6 +117,7 @@ for (i, (start, end)) in enumerate(speech_segments):
     )
     labeled_end = True
 ax.legend()
+
 ax2.axhline(y=redemption_time_samples, color = 'r', linestyle = 'dashed', label = "redemption_time")
 ax2.legend()
 
@@ -133,6 +134,7 @@ for i in range(len(signal_array)):
 ax.fill_between(times, min(signal_array), max(signal_array), where=fill_regions, alpha=0.5)
 
 if args.output:
-    plt.savefig(args.output)
+    plt.tight_layout()
+    plt.savefig(args.output, dpi=200)
 else:
     plt.show()
