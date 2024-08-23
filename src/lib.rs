@@ -12,10 +12,10 @@ use std::time::Duration;
 pub struct VadConfig {
     pub positive_speech_threshold: f32,
     pub negative_speech_threshold: f32,
-    pub pre_speech_pad_ms: usize,
-    pub redemption_frames: usize,
+    pub pre_speech_pad: Duration,
+    pub redemption_time: Duration,
     pub sample_rate: usize,
-    pub min_speech_frames: usize,
+    pub min_speech_time: Duration,
 }
 
 impl VadConfig {
@@ -52,9 +52,8 @@ pub struct VadSession {
 enum VadState {
     Speech {
         start_ms: usize,
-        min_frames_passed: bool,
-        speech_frames: usize,
-        redemption_frames: usize,
+        redemption_passed: bool,
+        speech_time: Duration,
     },
     Silence,
 }
@@ -201,28 +200,30 @@ impl VadSession {
             self.silent_samples = 0;
         }
 
+        let current_silence = self.current_silence_duration();
+
         match self.state {
             VadState::Silence => {
                 if prob > self.config.positive_speech_threshold {
                     self.state = VadState::Speech {
                         start_ms: self
                             .session_time()
-                            .saturating_sub(self.config.pre_speech_pad_ms),
-                        min_frames_passed: false,
-                        speech_frames: 0,
-                        redemption_frames: 0,
+                            .saturating_sub(self.config.pre_speech_pad)
+                            .as_millis() as usize,
+                        redemption_passed: false,
+                        speech_time: Duration::ZERO,
                     };
                 }
             }
             VadState::Speech {
                 start_ms,
-                ref mut min_frames_passed,
-                ref mut speech_frames,
-                ref mut redemption_frames,
+                ref mut redemption_passed,
+                ref mut speech_time,
             } => {
-                *speech_frames += 1;
-                if !*min_frames_passed && *speech_frames > self.config.min_speech_frames {
-                    *min_frames_passed = true;
+                *speech_time +=
+                    Duration::from_secs_f64(samples as f64 / self.config.sample_rate as f64);
+                if !*redemption_passed && *speech_time > self.config.min_speech_time {
+                    *redemption_passed = true;
                     // TODO: the pre speech padding should not cross over the previous speech->silence
                     // transition, if there was one
                     vad_change = Some(VadTransition::SpeechStart {
@@ -233,12 +234,11 @@ impl VadSession {
                 }
 
                 if prob < self.config.negative_speech_threshold {
-                    if !*min_frames_passed {
+                    if !*redemption_passed {
                         self.state = VadState::Silence;
                     } else {
-                        *redemption_frames += 1;
-                        if *redemption_frames > self.config.redemption_frames {
-                            if *min_frames_passed {
+                        if current_silence > self.config.redemption_time {
+                            if *redemption_passed {
                                 let speech_end = (self.processed_samples + audio_frame.len())
                                     / (self.config.sample_rate / 1000);
                                 vad_change = Some(VadTransition::SpeechEnd {
@@ -249,8 +249,6 @@ impl VadSession {
                             self.state = VadState::Silence
                         }
                     }
-                } else {
-                    *redemption_frames = 0;
                 }
             }
         };
@@ -263,8 +261,8 @@ impl VadSession {
     /// Returns whether the vad current believes the audio to contain speech
     pub fn is_speaking(&self) -> bool {
         matches!(self.state, VadState::Speech {
-            min_frames_passed, ..
-        } if min_frames_passed)
+            redemption_passed, ..
+        } if redemption_passed)
     }
 
     /// Gets a buffer of the most recent active speech frames from the time the speech started to the
@@ -301,8 +299,8 @@ impl VadSession {
     }
 
     /// Get the current length of the VAD session.
-    pub fn session_time(&self) -> usize {
-        self.processed_samples / (self.config.sample_rate / 1000)
+    pub fn session_time(&self) -> Duration {
+        Duration::from_secs_f64(self.processed_samples as f64 / self.config.sample_rate as f64)
     }
 
     /// Reset the status of the model
@@ -337,10 +335,10 @@ impl Default for VadConfig {
             // https://github.com/ricky0123/vad/blob/ea584aaf66d9162fb19d9bfba607e264452980c3/packages/_common/src/frame-processor.ts#L52
             positive_speech_threshold: 0.35,
             negative_speech_threshold: 0.25,
-            pre_speech_pad_ms: 600,
-            redemption_frames: 20,
+            pre_speech_pad: Duration::from_millis(600),
+            redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
-            min_speech_frames: 3,
+            min_speech_time: Duration::from_millis(90),
         }
     }
 }
