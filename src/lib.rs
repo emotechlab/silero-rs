@@ -245,7 +245,7 @@ impl VadSession {
                     } else {
                         if current_silence > self.config.redemption_time {
                             if *redemption_passed {
-                                let speech_end = (self.processed_samples + audio_frame.len())
+                                let speech_end = (self.processed_samples + audio_frame.len() - self.silent_samples)
                                     / (self.config.sample_rate / 1000);
                                 vad_change = Some(VadTransition::SpeechEnd {
                                     timestamp_ms: speech_end,
