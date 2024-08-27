@@ -28,11 +28,12 @@ struct Summary {
     summary: BTreeMap<PathBuf, Report>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Default, Debug, PartialEq, Deserialize, Serialize)]
 struct Report {
     transitions: Vec<VadTransition>,
     current_silence_samples: Vec<usize>,
     current_speech_samples: Vec<usize>,
+    likelihoods: Vec<usize>,
 }
 
 #[test]
@@ -94,7 +95,7 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
             .collect();
 
         let num_chunks = samples.len() / chunk_size;
-
+        let mut last_end = 0;
         for i in 0..num_chunks {
             let start = i * chunk_size;
             let end = if i < num_chunks - 1 {
@@ -111,6 +112,18 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
             report
                 .current_speech_samples
                 .push(session.current_speech_samples());
+
+            if let Ok(network_outputs) = session.forward(samples[last_end..end].to_vec()) {
+                let prob = *network_outputs
+                    .try_extract_tensor::<f32>()
+                    .unwrap()
+                    .first()
+                    .unwrap()
+                    * 100.0;
+                report.likelihoods.push(prob as usize);
+                // Try and solve the too small inference issue
+                last_end = end;
+            }
         }
         summary.insert(audio.to_path_buf(), report);
     }
