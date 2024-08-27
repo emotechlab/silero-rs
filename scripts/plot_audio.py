@@ -51,6 +51,10 @@ with open(args.input) as f:
     likelihoods = vad["likelihoods"]
     redemption_time = rust_duration_to_seconds(data["config"]["redemption_time"])
     pre_speech_pad = rust_duration_to_seconds(data["config"]["pre_speech_pad"])
+
+    positive_thresh = float(data["config"]["positive_speech_threshold"]) * 100
+    negative_thresh = float(data["config"]["negative_speech_threshold"]) * 100
+
     print(f"redemption time: {redemption_time}")
     for segment in vad["transitions"]:
         if "SpeechStart" in segment:
@@ -124,6 +128,10 @@ ax.legend()
 
 ax2.axhline(y=redemption_time_samples, color = 'r', linestyle = 'dashed', label = "redemption_time")
 ax2.legend()
+
+ax3.axhline(y=positive_thresh, color = 'g', linestyle = 'dashed', label = "positive threshold")
+ax3.axhline(y=negative_thresh, color = 'r', linestyle = 'dashed', label = "negative threshold")
+ax3.legend()
 
 fill_regions = [False] * len(signal_array)
 
