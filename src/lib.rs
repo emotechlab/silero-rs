@@ -154,16 +154,10 @@ impl VadSession {
         Ok(transitions)
     }
 
-    /// Advance the VAD state machine with an audio frame. Keep between 30-96ms in length.
-    /// Return indicates if a transition from speech to silence (or silence to speech) occurred.
-    ///
-    /// Important: don't implement your own endpointing logic.
-    /// Instead, when a `SpeechEnd` is returned, you can use the `get_current_speech()` method to retrieve the audio.
-    fn process_internal(&mut self, range: Range<usize>) -> Result<Option<VadTransition>> {
-        let audio_frame = &self.session_audio[range];
-        let samples = audio_frame.len();
-        let audio_tensor = Array2::from_shape_vec((1, samples), audio_frame.to_vec())?;
-        let result = self.model.run(ort::inputs![
+    pub fn forward(&mut self, input: Vec<f32>) -> Result<ort::Value> {
+        let samples = input.len();
+        let audio_tensor = Array2::from_shape_vec((1, samples), input)?;
+        let mut result = self.model.run(ort::inputs![
             audio_tensor.view(),
             self.sample_rate_tensor.view(),
             self.h_tensor.view(),
@@ -174,27 +168,35 @@ impl VadSession {
         self.h_tensor = result
             .get("hn")
             .unwrap()
-            .try_extract_tensor::<f32>()
-            .unwrap()
+            .try_extract_tensor::<f32>()?
             .to_owned()
             .into_shape((2, 1, 64))
-            .expect("Shape mismatch for h_tensor");
+            .context("Shape mismatch for h_tensor")?;
+
         self.c_tensor = result
             .get("cn")
             .unwrap()
-            .try_extract_tensor::<f32>()
-            .unwrap()
+            .try_extract_tensor::<f32>()?
             .to_owned()
             .into_shape((2, 1, 64))
-            .expect("Shape mismatch for h_tensor");
+            .context("Shape mismatch for h_tensor")?;
 
-        let prob = *result
-            .get("output")
-            .unwrap()
-            .try_extract_tensor::<f32>()
-            .unwrap()
-            .first()
-            .unwrap();
+        let prob_tensor = result.remove("output").unwrap();
+        Ok(prob_tensor)
+    }
+
+    /// Advance the VAD state machine with an audio frame. Keep between 30-96ms in length.
+    /// Return indicates if a transition from speech to silence (or silence to speech) occurred.
+    ///
+    /// Important: don't implement your own endpointing logic.
+    /// Instead, when a `SpeechEnd` is returned, you can use the `get_current_speech()` method to retrieve the audio.
+    fn process_internal(&mut self, range: Range<usize>) -> Result<Option<VadTransition>> {
+        let audio_frame = self.session_audio[range].to_vec();
+        let samples = audio_frame.len();
+
+        let result = self.forward(audio_frame)?;
+
+        let prob = *result.try_extract_tensor::<f32>().unwrap().first().unwrap();
 
         let mut vad_change = None;
 
@@ -243,7 +245,7 @@ impl VadSession {
                     } else {
                         if current_silence > self.config.redemption_time {
                             if *redemption_passed {
-                                let speech_end = (self.processed_samples + audio_frame.len()
+                                let speech_end = (self.processed_samples + samples
                                     - self.silent_samples)
                                     / (self.config.sample_rate / 1000);
                                 vad_change = Some(VadTransition::SpeechEnd {
@@ -258,7 +260,7 @@ impl VadSession {
             }
         };
 
-        self.processed_samples += audio_frame.len();
+        self.processed_samples += samples;
 
         Ok(vad_change)
     }
