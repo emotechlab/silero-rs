@@ -48,6 +48,7 @@ with open(args.input) as f:
     vad = data["summary"][args.audio]
     silence_samples = vad["current_silence_samples"]
     speech_samples = vad["current_speech_samples"]
+    likelihoods = vad["likelihoods"]
     redemption_time = rust_duration_to_seconds(data["config"]["redemption_time"])
     pre_speech_pad = rust_duration_to_seconds(data["config"]["pre_speech_pad"])
     print(f"redemption time: {redemption_time}")
@@ -84,14 +85,17 @@ signal_array = np.frombuffer(signal_wave, dtype=np.int16)
 
 times = np.linspace(0, n_samples/sample_freq, num=n_samples)
 
-fig, (ax, ax2) = plt.subplots(2)
+fig, (ax, ax2, ax3) = plt.subplots(3)
 
 ax.plot(times, signal_array)
 
 ax.set(xlabel="Time (s)", ylabel="Signal", title="Audio")
+ax2.set(title = "Buffer Sizes")
+ax3.set(title = "Network likelihoods")
 
 ax2.plot(silence_samples, label = "Current silence samples")
 ax2.plot(speech_samples, label = "Current speech samples")
+ax3.plot(likelihoods, label = "network likelihoods")
 labeled_start = False
 labeled_end = False
 for (i, (start, end)) in enumerate(speech_segments):
