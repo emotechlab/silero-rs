@@ -19,18 +19,6 @@ pub struct VadConfig {
     pub min_speech_time: Duration,
 }
 
-impl VadConfig {
-    /// Gets the number of audio samples in an input frame
-    pub fn get_frame_samples(&self) -> usize {
-        (30_f32 / 1000_f32 * self.sample_rate as f32) as usize // 30ms * sample_rate Hz
-    }
-
-    /// Gets the number of frames for a given duration in milliseconds
-    pub fn get_frames(length_ms: usize) -> usize {
-        length_ms / 30
-    }
-}
-
 /// A VAD session create one of these for each audio stream you want to detect voice activity on
 /// and feed the audio into it.
 #[derive(Debug)]
