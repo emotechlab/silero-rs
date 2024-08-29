@@ -396,4 +396,28 @@ mod tests {
         let bytes = std::fs::read("models/silero_vad.onnx").unwrap();
         assert!(VadSession::new_from_bytes(&bytes, config).is_err());
     }
+
+    /// Just a sanity test of speech duration to make sure the calculation seems roughly right in
+    /// terms of number of samples, sample rate and taking into account the speech starts/ends.
+    #[test]
+    fn simple_speech_duration() {
+        let mut config = VadConfig::default();
+        config.sample_rate = 8000;
+        let mut session = VadSession::new(config.clone()).unwrap();
+        session.session_audio.resize(16005, 0.0);
+
+        assert_eq!(session.current_speech_duration(), Duration::from_secs(0));
+
+        session.speech_start = Some(5);
+        assert_eq!(session.current_speech_duration(), Duration::from_secs(2));
+
+        session.speech_end = Some(8005);
+        assert_eq!(session.current_speech_duration(), Duration::from_secs(1));
+
+        session.config.sample_rate = 16000;
+        assert_eq!(
+            session.current_speech_duration(),
+            Duration::from_millis(500)
+        );
+    }
 }
