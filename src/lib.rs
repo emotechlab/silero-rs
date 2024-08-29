@@ -32,7 +32,9 @@ pub struct VadSession {
     session_audio: Vec<f32>,
     processed_samples: usize,
     silent_samples: usize,
+    /// Current start of the speech in milliseconds
     speech_start: Option<usize>,
+    /// Current end of the speech in milliseconds
     speech_end: Option<usize>,
 }
 
@@ -404,18 +406,18 @@ mod tests {
         let mut config = VadConfig::default();
         config.sample_rate = 8000;
         let mut session = VadSession::new(config.clone()).unwrap();
-        session.session_audio.resize(16005, 0.0);
+        session.session_audio.resize(16080, 0.0);
 
         assert_eq!(session.current_speech_duration(), Duration::from_secs(0));
 
-        session.speech_start = Some(4);
+        session.speech_start = Some(10);
         assert_eq!(session.current_speech_duration(), Duration::from_secs(2));
 
-        session.speech_end = Some(8005);
+        session.speech_end = Some(1010);
         assert_eq!(session.current_speech_duration(), Duration::from_secs(1));
 
         session.config.sample_rate = 16000;
-        session.speech_start = Some(3); // Need to move back another single step because each sample is now worth half as much
+        session.speech_end = Some(510);
         assert_eq!(
             session.current_speech_duration(),
             Duration::from_millis(500)
