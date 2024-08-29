@@ -160,7 +160,7 @@ impl VadSession {
             .unwrap()
             .try_extract_tensor::<f32>()?
             .to_owned()
-            .into_shape((2, 1, 64))
+            .into_shape_with_order((2, 1, 64))
             .context("Shape mismatch for h_tensor")?;
 
         self.c_tensor = result
@@ -168,7 +168,7 @@ impl VadSession {
             .unwrap()
             .try_extract_tensor::<f32>()?
             .to_owned()
-            .into_shape((2, 1, 64))
+            .into_shape_with_order((2, 1, 64))
             .context("Shape mismatch for h_tensor")?;
 
         let prob_tensor = result.remove("output").unwrap();
