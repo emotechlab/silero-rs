@@ -408,13 +408,14 @@ mod tests {
 
         assert_eq!(session.current_speech_duration(), Duration::from_secs(0));
 
-        session.speech_start = Some(5);
+        session.speech_start = Some(4);
         assert_eq!(session.current_speech_duration(), Duration::from_secs(2));
 
         session.speech_end = Some(8005);
         assert_eq!(session.current_speech_duration(), Duration::from_secs(1));
 
         session.config.sample_rate = 16000;
+        session.speech_start = Some(3); // Need to move back another single step because each sample is now worth half as much
         assert_eq!(
             session.current_speech_duration(),
             Duration::from_millis(500)
