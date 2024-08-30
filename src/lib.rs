@@ -262,19 +262,30 @@ impl VadSession {
         } if redemption_passed)
     }
 
+    /// Gets the speech within a given range of milliseconds. You can use previous speech start/end
+    /// event pairs to get speech windows before the current speech using this API. If end is
+    /// `None` this will return from the start point to the end of the buffer.
+    ///
+    /// # Panics
+    ///
+    /// If the range is out of bounds of the speech buffer this method will panic.
+    pub fn get_speech(&self, start: usize, end: Option<usize>) -> &[f32] {
+        let speech_start = start * (self.config.sample_rate / 1000);
+        if let Some(speech_end) = end {
+            let speech_end = speech_end * (self.config.sample_rate / 1000);
+            &self.session_audio[speech_start..speech_end]
+        } else {
+            &self.session_audio[speech_start..]
+        }
+    }
+
     /// Gets a buffer of the most recent active speech frames from the time the speech started to the
     /// end of the speech. Parameters from `VadConfig` have already been applied here so this isn't
     /// derived from the raw VAD inferences but instead after padding and filtering operations have
     /// been applied.
     pub fn get_current_speech(&self) -> &[f32] {
         if let Some(speech_start) = self.speech_start {
-            let speech_start = speech_start * (self.config.sample_rate / 1000);
-            if let Some(speech_end) = self.speech_end {
-                let speech_end = speech_end * (self.config.sample_rate / 1000);
-                &self.session_audio[speech_start..speech_end]
-            } else {
-                &self.session_audio[speech_start..]
-            }
+            self.get_speech(speech_start, self.speech_end)
         } else {
             &[]
         }
