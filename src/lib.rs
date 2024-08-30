@@ -269,7 +269,7 @@ impl VadSession {
     /// # Panics
     ///
     /// If the range is out of bounds of the speech buffer this method will panic.
-    pub fn get_speech(&self, start: usize, end: Option<usize>) {
+    pub fn get_speech(&self, start: usize, end: Option<usize>) -> &[f32] {
         let speech_start = start * (self.config.sample_rate / 1000);
         if let Some(speech_end) = end {
             let speech_end = speech_end * (self.config.sample_rate / 1000);
