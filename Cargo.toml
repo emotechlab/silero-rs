@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.86"
 ndarray = "0.16"
-ort = "=2.0.0-rc.5"
+ort = "=2.0.0-rc.6"
 serde = { version = "1.0.208", features = ["derive"], optional = true }
 
 [features]
