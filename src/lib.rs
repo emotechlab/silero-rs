@@ -160,7 +160,7 @@ impl VadSession {
             .unwrap()
             .try_extract_tensor::<f32>()?
             .to_owned()
-            .into_shape((2, 1, 64))
+            .into_shape_with_order((2, 1, 64))
             .context("Shape mismatch for h_tensor")?;
 
         self.c_tensor = result
@@ -168,7 +168,7 @@ impl VadSession {
             .unwrap()
             .try_extract_tensor::<f32>()?
             .to_owned()
-            .into_shape((2, 1, 64))
+            .into_shape_with_order((2, 1, 64))
             .context("Shape mismatch for h_tensor")?;
 
         let prob_tensor = result.remove("output").unwrap();
@@ -232,19 +232,17 @@ impl VadSession {
                 if prob < self.config.negative_speech_threshold {
                     if !*redemption_passed {
                         self.state = VadState::Silence;
-                    } else {
-                        if current_silence > self.config.redemption_time {
-                            if *redemption_passed {
-                                let speech_end = (self.processed_samples + samples
-                                    - self.silent_samples)
-                                    / (self.config.sample_rate / 1000);
-                                vad_change = Some(VadTransition::SpeechEnd {
-                                    timestamp_ms: speech_end,
-                                });
-                                self.speech_end = Some(speech_end);
-                            }
-                            self.state = VadState::Silence
+                    } else if current_silence > self.config.redemption_time {
+                        if *redemption_passed {
+                            let speech_end = (self.processed_samples + samples
+                                - self.silent_samples)
+                                / (self.config.sample_rate / 1000);
+                            vad_change = Some(VadTransition::SpeechEnd {
+                                timestamp_ms: speech_end,
+                            });
+                            self.speech_end = Some(speech_end);
                         }
+                        self.state = VadState::Silence
                     }
                 }
             }
