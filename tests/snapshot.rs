@@ -20,6 +20,7 @@ use silero::*;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing_test::traced_test;
 
 #[derive(Default, Debug, PartialEq, Deserialize, Serialize)]
 struct Summary {
@@ -37,11 +38,13 @@ struct Report {
 }
 
 #[test]
+#[traced_test]
 fn chunk_50_default_params_16k() {
     run_snapshot_test(50, VadConfig::default(), "default");
 }
 
 #[test]
+#[traced_test]
 fn chunk_50_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
@@ -49,11 +52,13 @@ fn chunk_50_default_params_8k() {
 }
 
 #[test]
+#[traced_test]
 fn chunk_30_default_params_16k() {
     run_snapshot_test(30, VadConfig::default(), "default");
 }
 
 #[test]
+#[traced_test]
 fn chunk_30_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
@@ -61,11 +66,13 @@ fn chunk_30_default_params_8k() {
 }
 
 #[test]
+#[traced_test]
 fn chunk_20_default_params_16k() {
     run_snapshot_test(20, VadConfig::default(), "default");
 }
 
 #[test]
+#[traced_test]
 fn chunk_20_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;

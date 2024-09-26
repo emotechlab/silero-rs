@@ -5,6 +5,7 @@ use ort::{GraphOptimizationLevel, Session};
 use std::ops::Range;
 use std::path::Path;
 use std::time::Duration;
+use tracing::trace;
 
 /// Parameters used to configure a vad session. These will determine the sensitivity and switching
 /// speed of detection.
@@ -195,6 +196,13 @@ impl VadSession {
         } else {
             self.silent_samples = 0;
         }
+
+        trace!(
+            vad_likelihood = prob,
+            samples,
+            silent_samples = self.silent_samples,
+            "performed silero inference"
+        );
 
         let current_silence = self.current_silence_duration();
 
