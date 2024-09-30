@@ -5,6 +5,7 @@ use ort::{GraphOptimizationLevel, Session, Tensor};
 use std::ops::Range;
 use std::path::Path;
 use std::time::Duration;
+use tracing::trace;
 
 /// Parameters used to configure a vad session. These will determine the sensitivity and switching
 /// speed of detection.
@@ -19,18 +20,6 @@ pub struct VadConfig {
     pub min_speech_time: Duration,
 }
 
-impl VadConfig {
-    /// Gets the number of audio samples in an input frame
-    pub fn get_frame_samples(&self) -> usize {
-        (30_f32 / 1000_f32 * self.sample_rate as f32) as usize // 30ms * sample_rate Hz
-    }
-
-    /// Gets the number of frames for a given duration in milliseconds
-    pub fn get_frames(length_ms: usize) -> usize {
-        length_ms / 30
-    }
-}
-
 /// A VAD session create one of these for each audio stream you want to detect voice activity on
 /// and feed the audio into it.
 #[derive(Debug)]
@@ -43,7 +32,9 @@ pub struct VadSession {
     session_audio: Vec<f32>,
     processed_samples: usize,
     silent_samples: usize,
+    /// Current start of the speech in milliseconds
     speech_start: Option<usize>,
+    /// Current end of the speech in milliseconds
     speech_end: Option<usize>,
 }
 
@@ -151,16 +142,10 @@ impl VadSession {
         Ok(transitions)
     }
 
-    /// Advance the VAD state machine with an audio frame. Keep between 30-96ms in length.
-    /// Return indicates if a transition from speech to silence (or silence to speech) occurred.
-    ///
-    /// Important: don't implement your own endpointing logic.
-    /// Instead, when a `SpeechEnd` is returned, you can use the `get_current_speech()` method to retrieve the audio.
-    fn process_internal(&mut self, range: Range<usize>) -> Result<Option<VadTransition>> {
-        let audio_frame = &self.session_audio[range];
-        let samples = audio_frame.len();
-        // FIXME: handling of remainder frames
-        let mut audio_tensor = Array2::<f32>::from_shape_vec([1, samples], audio_frame.to_vec())?;
+    pub fn forward(&mut self, input: Vec<f32>) -> Result<ort::Value> {
+        let samples = input.len();
+        // let mut audio_tensor = Array2::<f32>::from_shape_vec([1, samples], audio_frame.to_vec())?;
+        let mut audio_tensor = Array2::from_shape_vec((1, samples), input)?;
         audio_tensor = match self.config.sample_rate {
             16000 => audio_tensor.slice(s![.., ..480.min(samples)]).to_owned(),
             8000 => audio_tensor.slice(s![.., ..240.min(samples)]).to_owned(),
@@ -172,16 +157,26 @@ impl VadSession {
             std::mem::take(&mut self.state_tensor),
             self.sample_rate_tensor.clone(),
         ]?;
-        let result = self.model.run(ort::SessionInputs::ValueSlice::<3>(&inputs))?;
+        let mut result = self.model.run(ort::SessionInputs::ValueSlice::<3>(&inputs))?;
 
         self.state_tensor = result["stateN"].try_extract_tensor().unwrap().to_owned();
 
-        let prob = *result["output"]
-            .try_extract_raw_tensor::<f32>()
-            .unwrap()
-            .1
-            .first()
-            .unwrap();
+        let prob = result.remove("output").unwrap();
+        Ok(prob)
+    }
+
+    /// Advance the VAD state machine with an audio frame. Keep between 30-96ms in length.
+    /// Return indicates if a transition from speech to silence (or silence to speech) occurred.
+    ///
+    /// Important: don't implement your own endpointing logic.
+    /// Instead, when a `SpeechEnd` is returned, you can use the `get_current_speech()` method to retrieve the audio.
+    fn process_internal(&mut self, range: Range<usize>) -> Result<Option<VadTransition>> {
+        let audio_frame = self.session_audio[range].to_vec();
+        let samples = audio_frame.len();
+
+        let result = self.forward(audio_frame)?;
+
+        let prob = *result.try_extract_tensor::<f32>().unwrap().first().unwrap();
 
         let mut vad_change = None;
 
@@ -190,6 +185,13 @@ impl VadSession {
         } else {
             self.silent_samples = 0;
         }
+
+        trace!(
+            vad_likelihood = prob,
+            samples,
+            silent_samples = self.silent_samples,
+            "performed silero inference"
+        );
 
         let current_silence = self.current_silence_duration();
 
@@ -227,25 +229,23 @@ impl VadSession {
                 if prob < self.config.negative_speech_threshold {
                     if !*redemption_passed {
                         self.state = VadState::Silence;
-                    } else {
-                        if current_silence > self.config.redemption_time {
-                            if *redemption_passed {
-                                let speech_end = (self.processed_samples + audio_frame.len()
-                                    - self.silent_samples)
-                                    / (self.config.sample_rate / 1000);
-                                vad_change = Some(VadTransition::SpeechEnd {
-                                    timestamp_ms: speech_end,
-                                });
-                                self.speech_end = Some(speech_end);
-                            }
-                            self.state = VadState::Silence
+                    } else if current_silence > self.config.redemption_time {
+                        if *redemption_passed {
+                            let speech_end = (self.processed_samples + samples
+                                - self.silent_samples)
+                                / (self.config.sample_rate / 1000);
+                            vad_change = Some(VadTransition::SpeechEnd {
+                                timestamp_ms: speech_end,
+                            });
+                            self.speech_end = Some(speech_end);
                         }
+                        self.state = VadState::Silence
                     }
                 }
             }
         };
 
-        self.processed_samples += audio_frame.len();
+        self.processed_samples += samples;
 
         Ok(vad_change)
     }
@@ -257,19 +257,30 @@ impl VadSession {
         } if redemption_passed)
     }
 
+    /// Gets the speech within a given range of milliseconds. You can use previous speech start/end
+    /// event pairs to get speech windows before the current speech using this API. If end is
+    /// `None` this will return from the start point to the end of the buffer.
+    ///
+    /// # Panics
+    ///
+    /// If the range is out of bounds of the speech buffer this method will panic.
+    pub fn get_speech(&self, start: usize, end: Option<usize>) -> &[f32] {
+        let speech_start = start * (self.config.sample_rate / 1000);
+        if let Some(speech_end) = end {
+            let speech_end = speech_end * (self.config.sample_rate / 1000);
+            &self.session_audio[speech_start..speech_end]
+        } else {
+            &self.session_audio[speech_start..]
+        }
+    }
+
     /// Gets a buffer of the most recent active speech frames from the time the speech started to the
     /// end of the speech. Parameters from `VadConfig` have already been applied here so this isn't
     /// derived from the raw VAD inferences but instead after padding and filtering operations have
     /// been applied.
     pub fn get_current_speech(&self) -> &[f32] {
         if let Some(speech_start) = self.speech_start {
-            let speech_start = speech_start * (self.config.sample_rate / 1000);
-            if let Some(speech_end) = self.speech_end {
-                let speech_end = speech_end * (self.config.sample_rate / 1000);
-                &self.session_audio[speech_start..speech_end]
-            } else {
-                &self.session_audio[speech_start..]
-            }
+            self.get_speech(speech_start, self.speech_end)
         } else {
             &[]
         }
@@ -391,5 +402,30 @@ mod tests {
 
         let bytes = std::fs::read("models/silero_vad.onnx").unwrap();
         assert!(VadSession::new_from_bytes(&bytes, config).is_err());
+    }
+
+    /// Just a sanity test of speech duration to make sure the calculation seems roughly right in
+    /// terms of number of samples, sample rate and taking into account the speech starts/ends.
+    #[test]
+    fn simple_speech_duration() {
+        let mut config = VadConfig::default();
+        config.sample_rate = 8000;
+        let mut session = VadSession::new(config.clone()).unwrap();
+        session.session_audio.resize(16080, 0.0);
+
+        assert_eq!(session.current_speech_duration(), Duration::from_secs(0));
+
+        session.speech_start = Some(10);
+        assert_eq!(session.current_speech_duration(), Duration::from_secs(2));
+
+        session.speech_end = Some(1010);
+        assert_eq!(session.current_speech_duration(), Duration::from_secs(1));
+
+        session.config.sample_rate = 16000;
+        session.speech_end = Some(510);
+        assert_eq!(
+            session.current_speech_duration(),
+            Duration::from_millis(500)
+        );
     }
 }
