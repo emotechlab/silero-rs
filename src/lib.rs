@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 use anyhow::{bail, Context, Result};
-use ndarray::{Array, Array2, ArrayBase, ArrayD, Dim, OwnedRepr};
+use ndarray::{s, Array, Array2, ArrayBase, ArrayD, Dim, OwnedRepr};
 use ort::{GraphOptimizationLevel, Session, Tensor};
 use std::ops::Range;
 use std::path::Path;
@@ -159,7 +159,13 @@ impl VadSession {
     fn process_internal(&mut self, range: Range<usize>) -> Result<Option<VadTransition>> {
         let audio_frame = &self.session_audio[range];
         let samples = audio_frame.len();
-        let audio_tensor = Array2::<f32>::from_shape_vec([1, samples], audio_frame.to_vec())?;
+        // FIXME: handling of remainder frames
+        let mut audio_tensor = Array2::<f32>::from_shape_vec([1, samples], audio_frame.to_vec())?;
+        audio_tensor = match self.config.sample_rate {
+            16000 => audio_tensor.slice(s![.., ..480.min(samples)]).to_owned(),
+            8000 => audio_tensor.slice(s![.., ..240.min(samples)]).to_owned(),
+            _ => unreachable!(),
+        };
 
         let inputs = ort::inputs![
             audio_tensor,
