@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 use anyhow::{bail, Context, Result};
-use ndarray::{Array, Array1, Array2, Array3, ArrayBase, ArrayD, Dim, Ix1, IxDynImpl, OwnedRepr};
-use ort::{GraphOptimizationLevel, Session};
+use ndarray::{Array, Array2, ArrayBase, ArrayD, Dim, OwnedRepr};
+use ort::{GraphOptimizationLevel, Session, Tensor};
 use std::ops::Range;
 use std::path::Path;
 use std::time::Duration;
@@ -37,7 +37,7 @@ impl VadConfig {
 pub struct VadSession {
     config: VadConfig,
     model: Session, // TODO: would this be safe to share? does the runtime graph hold any state?
-    state_tensor: ArrayBase<OwnedRepr<f32>, Dim<IxDynImpl>>,
+    state_tensor: ArrayD<f32>,
     sample_rate_tensor: ArrayBase<OwnedRepr<i64>, Dim<[usize; 1]>>,
     state: VadState,
     session_audio: Vec<f32>,
@@ -162,9 +162,9 @@ impl VadSession {
         let audio_tensor = Array2::<f32>::from_shape_vec([1, samples], audio_frame.to_vec())?;
 
         let inputs = ort::inputs![
-            audio_tensor.view(),
-            self.state_tensor.view(),
-            self.sample_rate_tensor.view(),
+            audio_tensor,
+            std::mem::take(&mut self.state_tensor),
+            self.sample_rate_tensor.clone(),
         ]?;
         let result = self.model.run(ort::SessionInputs::ValueSlice::<3>(&inputs))?;
 
