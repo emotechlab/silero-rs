@@ -63,6 +63,13 @@ pub enum VadTransition {
     },
 }
 
+#[derive(Debug)]
+pub struct SpeechSegment {
+    pub start_ms: usize,
+    pub end_ms: usize,
+    pub speech_samples: Vec<f32>,
+}
+
 impl VadSession {
     /// Create a new VAD session loading an onnx file from the specified path and using the
     /// provided config.
@@ -143,6 +150,37 @@ impl VadSession {
             }
         }
         Ok(transitions)
+    }
+
+    /// Pass in some audio to the VAD and return a list of active [SpeechSegment]s.
+    pub fn get_speech_segments(&mut self, audio_frame: &[f32]) -> Vec<SpeechSegment> {
+        match self.process(audio_frame) {
+            Ok(transitions) => {
+                let mut last_start_ms = 0;
+                let mut speech_segments = vec![];
+                for transition in transitions {
+                    match transition {
+                        VadTransition::SpeechStart { timestamp_ms } => {
+                            last_start_ms = timestamp_ms;
+                        }
+                        VadTransition::SpeechEnd { timestamp_ms } => {
+                            let speech_segment = SpeechSegment {
+                                start_ms: last_start_ms,
+                                end_ms: timestamp_ms,
+                                speech_samples: self
+                                    .get_speech(last_start_ms, Some(timestamp_ms))
+                                    .to_vec(),
+                            };
+                            speech_segments.push(speech_segment);
+                        }
+                    }
+                }
+                speech_segments
+            }
+            Err(_) => {
+                vec![]
+            }
+        }
     }
 
     pub fn forward(&mut self, input: Vec<f32>) -> Result<ort::Value> {
@@ -393,10 +431,15 @@ mod tests {
     #[test]
     fn silence_handling() {
         let mut session = VadSession::new(VadConfig::default()).unwrap();
+        let mut session2 = VadSession::new(VadConfig::default()).unwrap();
+
         let silence = vec![0.0; 30 * 16]; // 30ms of silence
 
         assert!(session.process(&silence).unwrap().is_empty());
         assert_eq!(session.processed_samples, silence.len());
+
+        assert!(session2.get_speech_segments(&silence).is_empty());
+        assert_eq!(session2.processed_samples, silence.len());
     }
 
     /// We only allow for 8khz and 16khz audio.
