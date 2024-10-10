@@ -134,7 +134,7 @@ impl VadSession {
         for i in 0..num_chunks {
             // we might not be getting audio chunks in perfect multiples of 30ms, so let the
             // last frame accommodate the remainder. This adds a bit of non-determinism based on
-            // audio size but it does let us more eagerly process audio.
+            // audio size, but it does let us more eagerly process audio.
             //
             // processed_samples is updated in process_internal so always points to the index of
             // the next sample to go from.
@@ -225,7 +225,7 @@ impl VadSession {
 
         let result = self.forward(audio_frame)?;
 
-        let prob = *result.try_extract_tensor::<f32>().unwrap().first().unwrap();
+        let prob = *result.try_extract_tensor::<f32>()?.first().unwrap();
 
         let mut vad_change = None;
 
@@ -401,12 +401,12 @@ impl Default for VadConfig {
 mod tests {
     use super::*;
 
-    /// Basic smoke test that the model loads correctly and we haven't committed rubbish to the
+    /// Basic smoke test that the model loads correctly, and we haven't committed rubbish to the
     /// repo.
     #[test]
     fn model_loads() {
-        let _sesion = VadSession::new(VadConfig::default()).unwrap();
-        let _sesion =
+        let _session = VadSession::new(VadConfig::default()).unwrap();
+        let _session =
             VadSession::new_from_path("models/silero_vad.onnx", VadConfig::default()).unwrap();
     }
 
@@ -426,7 +426,7 @@ mod tests {
         assert!(session.process(&short_audio).unwrap().is_empty());
     }
 
-    /// Check that a long enough packet of just zeros gets an inference and it doesn't flag as
+    /// Check that a long enough packet of just zeros gets an inference, and it doesn't flag as
     /// transitioning to speech
     #[test]
     fn silence_handling() {
