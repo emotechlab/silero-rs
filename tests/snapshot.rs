@@ -12,7 +12,7 @@
 //! reports versus the audio and help us debug via charts! Each test will be ran for all audio in
 //! the audio folder as well.
 //!
-//! Also all test audios will be 16kHz to make it easy to test silero in both 16kHz and 8kHz modes.
+//! Also, all test audios will be 16kHz to make it easy to test silero in both 16kHz and 8kHz modes.
 use approx::assert_ulps_eq;
 use hound::WavReader;
 use serde::{Deserialize, Serialize};
@@ -221,7 +221,7 @@ fn get_audios() -> Vec<PathBuf> {
     for entry in fs::read_dir(&audio_dir).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
-        if !path.is_dir() {
+        if !path.is_dir() && path.ends_with(".wav") {
             result.push(path.to_path_buf());
         }
     }
