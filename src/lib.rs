@@ -114,8 +114,8 @@ impl VadSession {
     /// Pass in some audio to the VAD and return a list of any speech transitions that happened
     /// during the segment.
     pub fn process(&mut self, audio_frame: &[f32]) -> Result<Vec<VadTransition>> {
-        const VAD_BUFFER_MS: usize = 30; // TODO This should be configurable
-        let vad_segment_length = VAD_BUFFER_MS * self.config.sample_rate / 1000;
+        const VAD_BUFFER: Duration = Duration::from_millis(30); // TODO This should be configurable
+        let vad_segment_length = VAD_BUFFER.as_millis() as usize * self.config.sample_rate / 1000;
 
         let unprocessed = self.session_audio.len() - self.processed_samples;
         let num_chunks = (unprocessed + audio_frame.len()) / vad_segment_length;
