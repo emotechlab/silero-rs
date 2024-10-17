@@ -9,11 +9,6 @@ pub fn resample_pcm(
     original_sample_rate: usize,
     desired_sample_rate: usize,
 ) -> anyhow::Result<Vec<f32>> {
-    // if original_sample_rate == desired_sample_rate {
-    //     info!("input and desired sample rate match, no resampling work need to do");
-    //     return Ok(pcm_data);
-    // }
-
     info!(
         "Resampling {} samples from {}Hz to {}Hz",
         &pcm_data.len(),
