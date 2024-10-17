@@ -1,7 +1,5 @@
 #![doc = include_str!("../README.md")]
 
-#[cfg(feature = "audio_reading")]
-pub mod audio_reading;
 pub mod utils;
 
 pub use crate::utils::resample_pcm;
