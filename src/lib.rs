@@ -130,7 +130,7 @@ impl VadSession {
         } else {
             audio_frame
         };
-        
+
         const VAD_BUFFER: Duration = Duration::from_millis(30); // TODO This should be configurable
         let vad_segment_length = VAD_BUFFER.as_millis() as usize * self.config.sample_rate / 1000;
 
