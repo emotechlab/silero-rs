@@ -1,4 +1,8 @@
 #![doc = include_str!("../README.md")]
+
+pub mod utils;
+
+pub use crate::utils::resample_pcm;
 use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::{GraphOptimizationLevel, Session};
@@ -113,7 +117,18 @@ impl VadSession {
 
     /// Pass in some audio to the VAD and return a list of any speech transitions that happened
     /// during the segment.
+    ///
+    /// If "auto_resample" feature is enabled, then this function will resample what ever it
+    /// receives to 16000Hz samples. If not enabled, then user input is expected to be of the right
+    /// sample rate: 8000 or 16000.
     pub fn process(&mut self, audio_frame: &[f32]) -> Result<Vec<VadTransition>> {
+        #[cfg(feature = "auto_resample")]
+        let audio_frame = if self.config.sample_rate != 16000 {
+            &resample_pcm(audio_frame.to_vec(), self.config.sample_rate, 16000)?
+        } else {
+            audio_frame
+        };
+
         const VAD_BUFFER: Duration = Duration::from_millis(30); // TODO This should be configurable
         let vad_segment_length = VAD_BUFFER.as_millis() as usize * self.config.sample_rate / 1000;
 
@@ -355,6 +370,42 @@ impl Default for VadConfig {
             redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
             min_speech_time: Duration::from_millis(90),
+        }
+    }
+}
+
+impl VadConfig {
+    pub fn new(
+        positive_speech_threshold: f32,
+        negative_speech_threshold: f32,
+        pre_speech_pad: Duration,
+        redemption_time: Duration,
+        sample_rate: usize,
+        min_speech_time: Duration,
+    ) -> Result<Self> {
+        let config = VadConfig {
+            positive_speech_threshold,
+            negative_speech_threshold,
+            pre_speech_pad,
+            redemption_time,
+            sample_rate,
+            min_speech_time,
+        };
+        match config.validate_config() {
+            Ok(_) => Ok(config),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn validate_config(&self) -> Result<()> {
+        #[cfg(feature = "auto_resample")]
+        return Ok(());
+
+        #[cfg(not(feature = "auto_resample"))]
+        if ![8000, 16000].contains(&self.sample_rate) {
+            bail!("You can only choose 8000 or 16000Hz sample rate")
+        } else {
+            Ok(())
         }
     }
 }
