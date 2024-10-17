@@ -2865,7 +2865,8 @@
         },
         {
           "SpeechEnd": {
-            "timestamp_ms": 1150
+            "start_timestamp_ms": 0,
+            "end_timestamp_ms": 1150
           }
         },
         {
@@ -3163,7 +3164,8 @@
         },
         {
           "SpeechEnd": {
-            "timestamp_ms": 700
+            "start_timestamp_ms": 0,
+            "end_timestamp_ms": 700
           }
         },
         {
@@ -3503,7 +3505,8 @@
         },
         {
           "SpeechEnd": {
-            "timestamp_ms": 500
+            "start_timestamp_ms": 0,
+            "end_timestamp_ms": 500
           }
         },
         {
@@ -3513,7 +3516,8 @@
         },
         {
           "SpeechEnd": {
-            "timestamp_ms": 1900
+            "start_timestamp_ms": 1050,
+            "end_timestamp_ms": 1900
           }
         },
         {
@@ -3748,7 +3752,8 @@
         },
         {
           "SpeechEnd": {
-            "timestamp_ms": 1600
+            "start_timestamp_ms": 0,
+            "end_timestamp_ms": 1600
           }
         },
         {
