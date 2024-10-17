@@ -16,7 +16,6 @@ pub struct VadConfig {
     pub negative_speech_threshold: f32,
     pub pre_speech_pad: Duration,
     pub post_speech_pad: Duration,
-    pub redemption_time: Duration,
     pub sample_rate: usize,
     pub min_speech_time: Duration,
 }
@@ -241,7 +240,7 @@ impl VadSession {
                 if prob < self.config.negative_speech_threshold {
                     if !*redemption_passed {
                         self.state = VadState::Silence;
-                    } else if current_silence > self.config.redemption_time {
+                    } else if current_silence > self.config.post_speech_pad {
                         if *redemption_passed {
                             let speech_end = (self.processed_samples + samples
                                 - self.silent_samples)
@@ -353,8 +352,7 @@ impl Default for VadConfig {
             positive_speech_threshold: 0.5,
             negative_speech_threshold: 0.35,
             pre_speech_pad: Duration::from_millis(600),
-            post_speech_pad: Duration::from_millis(100),
-            redemption_time: Duration::from_millis(600),
+            post_speech_pad: Duration::from_millis(600),
             sample_rate: 16000,
             min_speech_time: Duration::from_millis(90),
         }
