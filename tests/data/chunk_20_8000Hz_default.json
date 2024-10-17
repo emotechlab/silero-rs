@@ -9,10 +9,6 @@
     },
     "post_speech_pad": {
       "secs": 0,
-      "nanos": 100000000
-    },
-    "redemption_time": {
-      "secs": 0,
       "nanos": 600000000
     },
     "sample_rate": 8000,
