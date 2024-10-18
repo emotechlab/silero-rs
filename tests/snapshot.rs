@@ -87,7 +87,6 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
     let mut summary = BTreeMap::new();
 
     for audio in audios.iter() {
-        dbg!(audio);
         let mut session = VadSession::new(config.clone()).unwrap();
         let mut report = Report::default();
         let step = if config.sample_rate == 16000 {
@@ -179,8 +178,6 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
             println!("{} is failing", sample.display());
             if baseline.transitions != current.transitions {
                 println!("\tDifference in transitions list!");
-                dbg!(&baseline.transitions);
-                dbg!(&current.transitions);
             }
             if baseline.current_silence_samples != current.current_silence_samples {
                 println!("\tDifference in silence lengths");

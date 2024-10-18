@@ -289,11 +289,6 @@ impl VadSession {
                             let to_delete_idx = 0..(speech_end_idx + 1);
                             self.session_audio.drain(to_delete_idx);
                             self.deleted_samples += speech_end_idx + 1;
-                            println!(
-                                "Deleted samples from {}ms to {}ms",
-                                self.speech_start_ms.unwrap(),
-                                self.speech_end_ms.unwrap()
-                            );
                             self.speech_start_ms = None;
                         }
                         self.state = VadState::Silence
@@ -337,10 +332,6 @@ impl VadSession {
     /// derived from the raw VAD inferences but instead after padding and filtering operations have
     /// been applied.
     pub fn get_current_speech(&self) -> &[f32] {
-        // match self.speech.as_ref() {
-        //     Some(speech) => speech,
-        //     None => &[],
-        // }
         if let Some(speech_start) = self.speech_start_ms {
             self.get_speech(speech_start, self.speech_end_ms)
         } else {
@@ -350,12 +341,6 @@ impl VadSession {
 
     /// Get how long the current speech is in samples.
     pub fn current_speech_samples(&self) -> usize {
-        println!(
-            "speech_start_ms = {:?}, speech_end_ms = {:?}, session_audio.len() = {}",
-            self.speech_start_ms,
-            self.speech_end_ms,
-            self.session_audio.len()
-        );
         self.get_current_speech().len()
     }
 
@@ -365,7 +350,7 @@ impl VadSession {
     /// them instead of just focusing on raw network output.
     pub fn current_speech_duration(&self) -> Duration {
         Duration::from_millis(
-            (self.current_speech_samples() / self.config.sample_rate * 1000) as u64,
+            (self.current_speech_samples() as f32 / self.config.sample_rate as f32 * 1000.0) as u64,
         )
     }
 
@@ -476,7 +461,6 @@ mod tests {
     /// Just a sanity test of speech duration to make sure the calculation seems roughly right in
     /// terms of number of samples, sample rate and taking into account the speech starts/ends.
     #[test]
-    #[ignore]
     fn simple_speech_duration() {
         let mut config = VadConfig::default();
         config.sample_rate = 8000;
