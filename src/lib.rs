@@ -39,8 +39,6 @@ pub struct VadSession {
     speech_start_ms: Option<usize>,
     /// Current end of the speech in milliseconds
     speech_end_ms: Option<usize>,
-    /// Current active speech samples, start and end ms reflected by the above two fields.
-    speech: Option<Vec<f32>>,
 }
 
 /// Current state of the VAD (speaking or silent)
@@ -127,7 +125,6 @@ impl VadSession {
             silent_samples: 0,
             speech_start_ms: None,
             speech_end_ms: None,
-            speech: None,
         })
     }
 
@@ -267,14 +264,6 @@ impl VadSession {
                     });
                     self.speech_start_ms = Some(start_ms);
                     self.speech_end_ms = None;
-                    // Need to adjust current speech as well.
-
-                    // cannot borrow `*self` as immutable because it is also borrowed as mutable
-                    // I'm so sorry, not sure how to fix this compiler error so cannot use
-                    // adjust_speech_start and adjust_speech_end function here.
-                    let speech_start_idx =
-                        start_ms * (self.config.sample_rate / 1000) - self.deleted_samples;
-                    self.speech = Some(self.session_audio[speech_start_idx..].to_vec());
                 }
 
                 if prob < self.config.negative_speech_threshold {
@@ -286,10 +275,10 @@ impl VadSession {
                                 - self.silent_samples)
                                 / (self.config.sample_rate / 1000);
 
-                            self.adjust_speech_end(Some(speech_end_ms));
+                            self.speech_end_ms = Some(speech_end_ms);
                             vad_change = Some(VadTransition::SpeechEnd {
                                 timestamp_ms: speech_end_ms,
-                                samples: self.speech.clone().unwrap(),
+                                samples: self.get_current_speech().to_vec(),
                             });
 
                             // Need to delete the current speech samples from internal buffer to prevent OOM.
@@ -306,7 +295,6 @@ impl VadSession {
                                 self.speech_end_ms.unwrap()
                             );
                             self.speech_start_ms = None;
-                            self.speech = None;
                         }
                         self.state = VadState::Silence
                     }
@@ -317,28 +305,6 @@ impl VadSession {
         self.processed_samples += samples;
 
         Ok(vad_change)
-    }
-
-    /// Adjust internal memory of current speech end time in ms
-    fn adjust_speech_end(&mut self, new_end_ms: Option<usize>) {
-        self.speech_end_ms = new_end_ms;
-        match self.speech_start_ms {
-            None => self.speech = None,
-            Some(start_ms) => {
-                self.speech = Some(self.get_speech(start_ms, self.speech_end_ms).to_vec())
-            }
-        }
-    }
-
-    /// Adjust internal memory of current speech start time in ms
-    fn adjust_speech_start(&mut self, new_start_ms: Option<usize>) {
-        self.speech_start_ms = new_start_ms;
-        match self.speech_start_ms {
-            None => self.speech = None,
-            Some(start_ms) => {
-                self.speech = Some(self.get_speech(start_ms, self.speech_end_ms).to_vec())
-            }
-        }
     }
 
     /// Returns whether the vad current believes the audio to contain speech
@@ -415,7 +381,6 @@ impl VadSession {
         self.c_tensor = Array3::<f32>::zeros((2, 1, 64));
         self.speech_start_ms = None;
         self.speech_end_ms = None;
-        self.speech = None;
         self.silent_samples = 0;
         self.state = VadState::Silence;
     }
