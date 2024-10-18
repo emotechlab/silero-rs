@@ -38,7 +38,7 @@ struct Report {
 }
 
 #[test]
-#[traced_test]
+// #[traced_test]
 fn chunk_50_default_params_16k() {
     run_snapshot_test(50, VadConfig::default(), "default");
 }
@@ -177,7 +177,7 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
         if baseline != current {
             println!("{} is failing", sample.display());
             if baseline.transitions != current.transitions {
-                println!("\tDifference in transitons list!");
+                println!("\tDifference in transitions list!");
             }
             if baseline.current_silence_samples != current.current_silence_samples {
                 println!("\tDifference in silence lengths");

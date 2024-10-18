@@ -32,11 +32,13 @@ pub struct VadSession {
     state: VadState,
     session_audio: Vec<f32>,
     processed_samples: usize,
+    deleted_samples: usize,
     silent_samples: usize,
+
     /// Current start of the speech in milliseconds
-    speech_start: Option<usize>,
+    speech_start_ms: Option<usize>,
     /// Current end of the speech in milliseconds
-    speech_end: Option<usize>,
+    speech_end_ms: Option<usize>,
 }
 
 /// Current state of the VAD (speaking or silent)
@@ -50,7 +52,7 @@ enum VadState {
     Silence,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum VadTransition {
     SpeechStart {
@@ -60,8 +62,33 @@ pub enum VadTransition {
     SpeechEnd {
         /// When the speech ended, in milliseconds since the start of the VAD session.
         timestamp_ms: usize,
+        /// The active speech samples.
+        #[cfg_attr(feature = "serde", serde(skip))]
+        samples: Vec<f32>,
     },
 }
+
+impl PartialEq for VadTransition {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                VadTransition::SpeechStart { timestamp_ms: ts1 },
+                VadTransition::SpeechStart { timestamp_ms: ts2 },
+            ) => ts1 == ts2,
+            (
+                VadTransition::SpeechEnd {
+                    timestamp_ms: ts1, ..
+                },
+                VadTransition::SpeechEnd {
+                    timestamp_ms: ts2, ..
+                },
+            ) => ts1 == ts2,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for VadTransition {}
 
 impl VadSession {
     /// Create a new VAD session loading an onnx file from the specified path and using the
@@ -94,9 +121,10 @@ impl VadSession {
             state: VadState::Silence,
             session_audio: vec![],
             processed_samples: 0,
+            deleted_samples: 0,
             silent_samples: 0,
-            speech_start: None,
-            speech_end: None,
+            speech_start_ms: None,
+            speech_end_ms: None,
         })
     }
 
@@ -117,7 +145,7 @@ impl VadSession {
         const VAD_BUFFER: Duration = Duration::from_millis(30); // TODO This should be configurable
         let vad_segment_length = VAD_BUFFER.as_millis() as usize * self.config.sample_rate / 1000;
 
-        let unprocessed = self.session_audio.len() - self.processed_samples;
+        let unprocessed = self.deleted_samples + self.session_audio.len() - self.processed_samples;
         let num_chunks = (unprocessed + audio_frame.len()) / vad_segment_length;
 
         self.session_audio.extend_from_slice(audio_frame);
@@ -132,9 +160,10 @@ impl VadSession {
             // processed_samples is updated in process_internal so always points to the index of
             // the next sample to go from.
             let sample_range = if i < num_chunks - 1 {
-                self.processed_samples..(self.processed_samples + vad_segment_length)
+                (self.processed_samples - self.deleted_samples)
+                    ..(self.processed_samples + vad_segment_length - self.deleted_samples)
             } else {
-                self.processed_samples..self.session_audio.len()
+                (self.processed_samples - self.deleted_samples)..self.session_audio.len()
             };
             let vad_result = self.process_internal(sample_range)?;
 
@@ -233,8 +262,8 @@ impl VadSession {
                     vad_change = Some(VadTransition::SpeechStart {
                         timestamp_ms: start_ms,
                     });
-                    self.speech_start = Some(start_ms);
-                    self.speech_end = None;
+                    self.speech_start_ms = Some(start_ms);
+                    self.speech_end_ms = None;
                 }
 
                 if prob < self.config.negative_speech_threshold {
@@ -242,13 +271,25 @@ impl VadSession {
                         self.state = VadState::Silence;
                     } else if current_silence > self.config.redemption_time {
                         if *redemption_passed {
-                            let speech_end = (self.processed_samples + samples
+                            let speech_end_ms = (self.processed_samples + samples
                                 - self.silent_samples)
                                 / (self.config.sample_rate / 1000);
+
+                            self.speech_end_ms = Some(speech_end_ms);
                             vad_change = Some(VadTransition::SpeechEnd {
-                                timestamp_ms: speech_end,
+                                timestamp_ms: speech_end_ms,
+                                samples: self.get_current_speech().to_vec(),
                             });
-                            self.speech_end = Some(speech_end);
+
+                            // Need to delete the current speech samples from internal buffer to prevent OOM.
+                            assert!(self.speech_start_ms.is_some() && self.speech_end_ms.is_some());
+                            let speech_end_idx =
+                                self.speech_end_ms.unwrap() * self.config.sample_rate / 1000
+                                    - self.deleted_samples;
+                            let to_delete_idx = 0..(speech_end_idx + 1);
+                            self.session_audio.drain(to_delete_idx);
+                            self.deleted_samples += speech_end_idx + 1;
+                            self.speech_start_ms = None;
                         }
                         self.state = VadState::Silence
                     }
@@ -275,13 +316,14 @@ impl VadSession {
     /// # Panics
     ///
     /// If the range is out of bounds of the speech buffer this method will panic.
-    pub fn get_speech(&self, start: usize, end: Option<usize>) -> &[f32] {
-        let speech_start = start * (self.config.sample_rate / 1000);
-        if let Some(speech_end) = end {
-            let speech_end = speech_end * (self.config.sample_rate / 1000);
-            &self.session_audio[speech_start..speech_end]
+    pub fn get_speech(&self, start_ms: usize, end_ms: Option<usize>) -> &[f32] {
+        let speech_start_idx = start_ms * (self.config.sample_rate / 1000) - self.deleted_samples;
+        if let Some(speech_end) = end_ms {
+            let speech_end_idx =
+                speech_end * (self.config.sample_rate / 1000) - self.deleted_samples;
+            &self.session_audio[speech_start_idx..speech_end_idx]
         } else {
-            &self.session_audio[speech_start..]
+            &self.session_audio[speech_start_idx..]
         }
     }
 
@@ -290,8 +332,8 @@ impl VadSession {
     /// derived from the raw VAD inferences but instead after padding and filtering operations have
     /// been applied.
     pub fn get_current_speech(&self) -> &[f32] {
-        if let Some(speech_start) = self.speech_start {
-            self.get_speech(speech_start, self.speech_end)
+        if let Some(speech_start) = self.speech_start_ms {
+            self.get_speech(speech_start, self.speech_end_ms)
         } else {
             &[]
         }
@@ -308,7 +350,7 @@ impl VadSession {
     /// them instead of just focusing on raw network output.
     pub fn current_speech_duration(&self) -> Duration {
         Duration::from_millis(
-            (self.current_speech_samples() / (self.config.sample_rate / 1000)) as u64,
+            (self.current_speech_samples() as f32 / self.config.sample_rate as f32 * 1000.0) as u64,
         )
     }
 
@@ -322,8 +364,8 @@ impl VadSession {
     pub fn reset(&mut self) {
         self.h_tensor = Array3::<f32>::zeros((2, 1, 64));
         self.c_tensor = Array3::<f32>::zeros((2, 1, 64));
-        self.speech_start = None;
-        self.speech_end = None;
+        self.speech_start_ms = None;
+        self.speech_end_ms = None;
         self.silent_samples = 0;
         self.state = VadState::Silence;
     }
@@ -427,14 +469,14 @@ mod tests {
 
         assert_eq!(session.current_speech_duration(), Duration::from_secs(0));
 
-        session.speech_start = Some(10);
+        session.speech_start_ms = Some(10);
         assert_eq!(session.current_speech_duration(), Duration::from_secs(2));
 
-        session.speech_end = Some(1010);
+        session.speech_end_ms = Some(1010);
         assert_eq!(session.current_speech_duration(), Duration::from_secs(1));
 
         session.config.sample_rate = 16000;
-        session.speech_end = Some(510);
+        session.speech_end_ms = Some(510);
         assert_eq!(
             session.current_speech_duration(),
             Duration::from_millis(500)
