@@ -271,15 +271,31 @@ impl VadSession {
                         self.state = VadState::Silence;
                     } else if current_silence > self.config.redemption_time {
                         if *redemption_passed {
-                            let speech_end_idx = (self.processed_samples + samples
+                            let speech_end_ms = (self.processed_samples + samples
                                 - self.silent_samples)
                                 / (self.config.sample_rate / 1000);
 
-                            self.speech_end_ms = Some(speech_end_idx);
+                            self.speech_end_ms = Some(speech_end_ms);
                             vad_change = Some(VadTransition::SpeechEnd {
-                                timestamp_ms: speech_end_idx,
+                                timestamp_ms: speech_end_ms,
                                 samples: self.get_current_speech().to_vec(),
                             });
+                            dbg!("Get speech end at {}ms", speech_end_ms);
+
+                            // Need to delete the current speech samples from internal buffer to prevent OOM.
+                            assert!(self.speech_start_ms.is_some() && self.speech_end_ms.is_some());
+                            let speech_end_idx =
+                                self.speech_end_ms.unwrap() * self.config.sample_rate / 1000
+                                    - self.deleted_samples;
+                            let to_delete_idx = 0..(speech_end_idx + 1);
+                            dbg!(
+                                self.deleted_samples,
+                                self.session_audio.len(),
+                                speech_end_idx,
+                                &to_delete_idx
+                            );
+                            self.session_audio.drain(to_delete_idx);
+                            self.deleted_samples += speech_end_idx + 1;
                         }
                         self.state = VadState::Silence
                     }
@@ -307,6 +323,11 @@ impl VadSession {
     ///
     /// If the range is out of bounds of the speech buffer this method will panic.
     pub fn get_speech(&self, start_ms: usize, end_ms: Option<usize>) -> &[f32] {
+        println!("get speech start_ms = {}, end_ms = {:?}", start_ms, end_ms);
+        dbg!(
+            start_ms * (self.config.sample_rate / 1000),
+            self.deleted_samples
+        );
         let speech_start_idx = start_ms * (self.config.sample_rate / 1000) - self.deleted_samples;
         if let Some(speech_end) = end_ms {
             let speech_end_idx =
@@ -322,8 +343,9 @@ impl VadSession {
     /// derived from the raw VAD inferences but instead after padding and filtering operations have
     /// been applied.
     pub fn get_current_speech(&self) -> &[f32] {
-        if let Some(speech_start) = self.speech_start_ms {
-            self.get_speech(speech_start, self.speech_end_ms)
+        println!("get_current_speech");
+        if let Some(speech_start_ms) = self.speech_start_ms {
+            self.get_speech(speech_start_ms, self.speech_end_ms)
         } else {
             &[]
         }
@@ -331,6 +353,7 @@ impl VadSession {
 
     /// Get how long the current speech is in samples.
     pub fn current_speech_samples(&self) -> usize {
+        println!("current_speech_samples");
         self.get_current_speech().len()
     }
 
@@ -339,6 +362,7 @@ impl VadSession {
     /// account the switching and padding parameters of the VAD whereas the silence measure ignores
     /// them instead of just focusing on raw network output.
     pub fn current_speech_duration(&self) -> Duration {
+        println!("current_speech_duration");
         Duration::from_millis(
             (self.current_speech_samples() / (self.config.sample_rate / 1000)) as u64,
         )

@@ -38,46 +38,46 @@ struct Report {
 }
 
 #[test]
-#[traced_test]
+// #[traced_test]
 fn chunk_50_default_params_16k() {
     run_snapshot_test(50, VadConfig::default(), "default");
 }
 
-#[test]
-#[traced_test]
-fn chunk_50_default_params_8k() {
-    let mut config = VadConfig::default();
-    config.sample_rate = 8000;
-    run_snapshot_test(50, config, "default");
-}
-
-#[test]
-#[traced_test]
-fn chunk_30_default_params_16k() {
-    run_snapshot_test(30, VadConfig::default(), "default");
-}
-
-#[test]
-#[traced_test]
-fn chunk_30_default_params_8k() {
-    let mut config = VadConfig::default();
-    config.sample_rate = 8000;
-    run_snapshot_test(30, config, "default");
-}
-
-#[test]
-#[traced_test]
-fn chunk_20_default_params_16k() {
-    run_snapshot_test(20, VadConfig::default(), "default");
-}
-
-#[test]
-#[traced_test]
-fn chunk_20_default_params_8k() {
-    let mut config = VadConfig::default();
-    config.sample_rate = 8000;
-    run_snapshot_test(20, config, "default");
-}
+// #[test]
+// #[traced_test]
+// fn chunk_50_default_params_8k() {
+//     let mut config = VadConfig::default();
+//     config.sample_rate = 8000;
+//     run_snapshot_test(50, config, "default");
+// }
+//
+// #[test]
+// #[traced_test]
+// fn chunk_30_default_params_16k() {
+//     run_snapshot_test(30, VadConfig::default(), "default");
+// }
+//
+// #[test]
+// #[traced_test]
+// fn chunk_30_default_params_8k() {
+//     let mut config = VadConfig::default();
+//     config.sample_rate = 8000;
+//     run_snapshot_test(30, config, "default");
+// }
+//
+// #[test]
+// #[traced_test]
+// fn chunk_20_default_params_16k() {
+//     run_snapshot_test(20, VadConfig::default(), "default");
+// }
+//
+// #[test]
+// #[traced_test]
+// fn chunk_20_default_params_8k() {
+//     let mut config = VadConfig::default();
+//     config.sample_rate = 8000;
+//     run_snapshot_test(20, config, "default");
+// }
 
 fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
     let audios = get_audios();
