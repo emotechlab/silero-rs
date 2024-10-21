@@ -121,7 +121,7 @@ impl VadSession {
         {
             Ok(())
         } else {
-            Err(VadError::FloatSampleNotInRangeMinus1To1.into())
+            Err(VadError::InvalidData.into())
         }
     }
 
@@ -476,7 +476,7 @@ mod tests {
         let result = session2.process(&invalid_samples);
         assert!(matches!(
             result.unwrap_err().downcast::<VadError>().unwrap(),
-            VadError::FloatSampleNotInRangeMinus1To1
+            VadError::InvalidData
         ));
     }
 }
