@@ -1,4 +1,7 @@
 #![doc = include_str!("../README.md")]
+pub mod errors;
+
+pub use crate::errors::VadError;
 use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::{GraphOptimizationLevel, Session};
@@ -111,9 +114,25 @@ impl VadSession {
         Self::new_from_bytes(model_bytes, config)
     }
 
+    pub fn validate_input(&self, audio_frame: &[f32]) -> Result<()> {
+        if audio_frame
+            .iter()
+            .all(|&sample| -1.0 <= sample && sample <= 1.0)
+        {
+            Ok(())
+        } else {
+            Err(VadError::InvalidData.into())
+        }
+    }
+
     /// Pass in some audio to the VAD and return a list of any speech transitions that happened
     /// during the segment.
     pub fn process(&mut self, audio_frame: &[f32]) -> Result<Vec<VadTransition>> {
+        #[cfg(debug_assertions)]
+        if let Err(e) = self.validate_input(audio_frame) {
+            return Err(e);
+        }
+
         const VAD_BUFFER: Duration = Duration::from_millis(30); // TODO This should be configurable
         let vad_segment_length = VAD_BUFFER.as_millis() as usize * self.config.sample_rate / 1000;
 
@@ -439,5 +458,25 @@ mod tests {
             session.current_speech_duration(),
             Duration::from_millis(500)
         );
+    }
+
+    /// The provided audio sample must be in the range -1.0 to 1.0
+    #[test]
+    fn audio_sample_range() {
+        let config = VadConfig::default();
+
+        let mut session = VadSession::new(config.clone()).unwrap();
+        let valid_samples = [0.0; 1000];
+        let result = session.process(&valid_samples);
+        assert!(result.is_ok());
+
+        let mut session2 = VadSession::new(config).unwrap();
+        let mut invalid_samples = valid_samples.clone();
+        invalid_samples[0] = -1.01;
+        let result = session2.process(&invalid_samples);
+        assert!(matches!(
+            result.unwrap_err().downcast::<VadError>().unwrap(),
+            VadError::InvalidData
+        ));
     }
 }
