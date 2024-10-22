@@ -31,9 +31,13 @@ jobs:
 
       - name: Cargo build
         run: |
-          cargo hack build --each-feature --no-dev-deps
-          cargo hack build --feature-powerset --no-dev-deps
-
+          cargo hack check --each-feature --no-dev-deps
+          cargo hack check --feature-powerset --no-dev-deps
 
       - name: Clippy
         run: cargo clippy
+
+      - name: Check example works
+        run: |
+          cd example/file_inference
+          cargo run --release -- --file=./audios/sample_1.mp3
