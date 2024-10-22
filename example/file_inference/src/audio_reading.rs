@@ -32,9 +32,8 @@ pub enum MultiChannelStrategy {
 /// Code modified from https://github.com/pdeljanov/Symphonia/blob/master/symphonia/examples/basic-interleaved.rs
 pub fn read_audio(
     file_path: impl AsRef<Path>,
-    desired_sample_rate: usize,
     multi_channel_strategy: MultiChannelStrategy,
-) -> Vec<f32> {
+) -> (Vec<f32>, usize) {
     info!("Reading {}", file_path.as_ref().display());
     // Create a media source. Note that the MediaSource trait is automatically implemented for File,
     // among other types.
@@ -141,13 +140,7 @@ pub fn read_audio(
     // Silero VAD only work with mono audio.
     let mono_audio = stereo_to_mono(stereo_audio, multi_channel_strategy);
 
-    // Silero VAD only work with 8000 or 16000 Hz audio.
-    resample_pcm(
-        mono_audio,
-        original_sample_rate as usize,
-        desired_sample_rate,
-    )
-    .unwrap()
+    (mono_audio, original_sample_rate as usize)
 }
 
 /// Convert stereo audio to mono audio based on [MultiChannelStrategy].

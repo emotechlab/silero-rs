@@ -17,11 +17,15 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let samples = read_audio(args.file, 16000, MultiChannelStrategy::FirstOnly);
     
-    let config = VadConfig::default();
+    let (samples, original_sample_rate) = read_audio(args.file, MultiChannelStrategy::FirstOnly);
+    
+    let mut config = VadConfig::default();
+    config.sample_rate = original_sample_rate;
     let mut session = VadSession::new(config)?;
     
+    // You do not need to worry about sample rate as long as you are using our library with
+    // `audio_resampler` feature enabled.
     let results = session.process(&samples)?;
     dbg!(&results);
     
