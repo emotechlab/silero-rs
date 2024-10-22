@@ -38,7 +38,7 @@ struct Report {
 }
 
 #[test]
-// #[traced_test]
+#[traced_test]
 fn chunk_50_default_params_16k() {
     run_snapshot_test(50, VadConfig::default(), "default");
 }

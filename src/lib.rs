@@ -62,7 +62,7 @@ pub enum VadTransition {
     SpeechEnd {
         /// When the speech ended, in milliseconds since the start of the VAD session.
         timestamp_ms: usize,
-        /// The active speech samples.
+        /// The active speech samples. This field is skipped in serde output even serde feature is enabled.
         #[cfg_attr(feature = "serde", serde(skip))]
         samples: Vec<f32>,
     },
