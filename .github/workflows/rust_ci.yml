@@ -31,8 +31,8 @@ jobs:
 
       - name: Cargo build
         run: |
-          cargo hack check --each-feature --no-dev-deps
-          cargo hack check --feature-powerset --no-dev-deps
+          cargo hack build --each-feature --no-dev-deps
+          cargo hack build --feature-powerset --no-dev-deps
 
 
       - name: Clippy
