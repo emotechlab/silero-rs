@@ -17,7 +17,7 @@ use symphonia::core::probe::Hint;
 use tracing::{debug, info};
 
 // Project libraries.
-use silero::utils::resample_pcm;
+use silero::audio_resampler::resample_pcm;
 
 /// The way to deal with Stereo audio file
 pub enum MultiChannelStrategy {

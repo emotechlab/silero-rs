@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
-pub use crate::errors::VadError;
 #[cfg(feature = "audio_resampler")]
-pub use crate::utils::resample_pcm;
+pub use crate::audio_resampler::resample_pcm;
+pub use crate::errors::VadError;
 use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::{GraphOptimizationLevel, Session};
@@ -10,8 +10,9 @@ use std::path::Path;
 use std::time::Duration;
 use tracing::trace;
 
+#[cfg(feature = "audio_resampler")]
+pub mod audio_resampler;
 pub mod errors;
-pub mod utils;
 
 /// Parameters used to configure a vad session. These will determine the sensitivity and switching
 /// speed of detection.

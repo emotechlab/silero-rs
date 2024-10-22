@@ -1,15 +1,12 @@
-#[cfg(feature = "audio_resampler")]
 use rubato::{FftFixedIn, Resampler};
+use tracing::trace;
 
-#[cfg(feature = "audio_resampler")]
 /// Resample one channel of pcm data into desired sample rate.
 pub fn resample_pcm(
     pcm_data: Vec<f32>,
     original_sample_rate: usize,
     desired_sample_rate: usize,
 ) -> anyhow::Result<Vec<f32>> {
-    use tracing::trace;
-
     if original_sample_rate == desired_sample_rate {
         trace!("no need to do any resample work");
         return Ok(pcm_data);
@@ -81,7 +78,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "audio_resampler")]
     fn resample_up() {
         let audios = get_audios();
         assert!(!audios.is_empty());
@@ -94,7 +90,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "audio_resampler")]
     fn resample_no_change() {
         let audios = get_audios();
         assert!(!audios.is_empty());
@@ -107,7 +102,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "audio_resampler")]
     fn resample_down() {
         let audios = get_audios();
         assert!(!audios.is_empty());
