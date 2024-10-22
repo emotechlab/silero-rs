@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
-use anyhow::{bail, Context, Result};
 pub use crate::errors::VadError;
 pub use crate::utils::resample_pcm;
+use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::{GraphOptimizationLevel, Session};
 use std::ops::Range;
