@@ -27,8 +27,13 @@ jobs:
       - name: Cargo test
         run: cargo test --all-features
 
+      - uses: taiki-e/install-action@cargo-hack
+
       - name: Cargo build
-        run: cargo build --all-features
+        run: |
+          cargo hack check --each-feature --no-dev-deps
+          cargo hack check --feature-powerset --no-dev-deps
+
 
       - name: Clippy
         run: cargo clippy
