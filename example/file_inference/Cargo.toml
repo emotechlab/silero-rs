@@ -1,0 +1,11 @@
+[package]
+name = "file_inference"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.90"
+clap = { version = "4.5.20", features = ["derive"] }
+silero = { path = "../.." }
+symphonia = { version = "0.5.4", features = ["all"] }
+tracing = "0.1.40"

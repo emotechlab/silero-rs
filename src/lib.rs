@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
-pub mod errors;
-
+#[cfg(feature = "audio_resampler")]
+pub use crate::audio_resampler::resample_pcm;
 pub use crate::errors::VadError;
 use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
@@ -9,6 +9,10 @@ use std::ops::Range;
 use std::path::Path;
 use std::time::Duration;
 use tracing::trace;
+
+#[cfg(feature = "audio_resampler")]
+pub mod audio_resampler;
+pub mod errors;
 
 /// Parameters used to configure a vad session. These will determine the sensitivity and switching
 /// speed of detection.
@@ -127,11 +131,22 @@ impl VadSession {
 
     /// Pass in some audio to the VAD and return a list of any speech transitions that happened
     /// during the segment.
+    ///
+    /// If "audio_resampler" feature is enabled, then this function will resample whatever it
+    /// receives to 16000Hz samples. If not enabled, then user input is expected to be either
+    /// 8000 or 16000Hz.
     pub fn process(&mut self, audio_frame: &[f32]) -> Result<Vec<VadTransition>> {
         #[cfg(debug_assertions)]
         if let Err(e) = self.validate_input(audio_frame) {
             return Err(e);
         }
+
+        #[cfg(feature = "audio_resampler")]
+        let audio_frame = if ![8000, 16000].contains(&self.config.sample_rate) {
+            &resample_pcm(audio_frame.to_vec(), self.config.sample_rate, 16000)?
+        } else {
+            audio_frame
+        };
 
         const VAD_BUFFER: Duration = Duration::from_millis(30); // TODO This should be configurable
         let vad_segment_length = VAD_BUFFER.as_millis() as usize * self.config.sample_rate / 1000;
@@ -374,6 +389,45 @@ impl Default for VadConfig {
             redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
             min_speech_time: Duration::from_millis(90),
+        }
+    }
+}
+
+impl VadConfig {
+    pub fn new(
+        positive_speech_threshold: f32,
+        negative_speech_threshold: f32,
+        pre_speech_pad: Duration,
+        redemption_time: Duration,
+        sample_rate: usize,
+        min_speech_time: Duration,
+    ) -> Result<Self> {
+        let config = VadConfig {
+            positive_speech_threshold,
+            negative_speech_threshold,
+            pre_speech_pad,
+            redemption_time,
+            sample_rate,
+            min_speech_time,
+        };
+        match config.validate_config() {
+            Ok(_) => Ok(config),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn validate_config(&self) -> Result<()> {
+        #[cfg(feature = "audio_resampler")]
+        return Ok(());
+
+        #[cfg(not(feature = "audio_resampler"))]
+        if ![8000, 16000].contains(&self.sample_rate) {
+            bail!(
+                "Invalid sample rate of {}, expected either 8000Hz or 16000Hz",
+                self.sample_rate
+            );
+        } else {
+            Ok(())
         }
     }
 }
