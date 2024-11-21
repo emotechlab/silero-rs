@@ -561,10 +561,12 @@ impl VadConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing_test::traced_test;
 
     /// Feed only silence into the network and ensure that `get_current_speech` returns an empty
     /// slice
     #[test]
+    #[traced_test]
     fn only_silence_get_speech() {
         let mut session = VadSession::new(VadConfig::default()).unwrap();
         let short_audio = vec![0.0; 1000];
@@ -577,6 +579,7 @@ mod tests {
     /// Basic smoke test that the model loads correctly and we haven't committed rubbish to the
     /// repo.
     #[test]
+    #[traced_test]
     fn model_loads() {
         let _session = VadSession::new(VadConfig::default()).unwrap();
         let _session =
@@ -588,6 +591,7 @@ mod tests {
     /// short inference in the internal inference call bubbles up an error but when using the
     /// public API no error is presented.
     #[test]
+    #[traced_test]
     fn short_audio_handling() {
         let mut session = VadSession::new(VadConfig::default()).unwrap();
 
@@ -602,6 +606,7 @@ mod tests {
     /// Check that a long enough packet of just zeros gets an inference and it doesn't flag as
     /// transitioning to speech
     #[test]
+    #[traced_test]
     fn silence_handling() {
         let mut session = VadSession::new(VadConfig::default()).unwrap();
         let silence = vec![0.0; 30 * 16]; // 30ms of silence
@@ -612,6 +617,7 @@ mod tests {
 
     /// We only allow for 8khz and 16khz audio.
     #[test]
+    #[traced_test]
     fn reject_invalid_sample_rate() {
         let mut config = VadConfig::default();
         config.sample_rate = 16000;
@@ -630,6 +636,7 @@ mod tests {
     /// Just a sanity test of speech duration to make sure the calculation seems roughly right in
     /// terms of number of samples, sample rate and taking into account the speech starts/ends.
     #[test]
+    #[traced_test]
     fn simple_speech_duration() {
         let mut config = VadConfig::default();
         config.sample_rate = 8000;
@@ -648,6 +655,7 @@ mod tests {
 
     /// The provided audio sample must be in the range -1.0 to 1.0
     #[test]
+    #[traced_test]
     fn audio_sample_range() {
         let config = VadConfig::default();
 
@@ -668,6 +676,7 @@ mod tests {
 
     /// Apply some audio with speech in and ensure that the take API works as expected
     #[test]
+    #[traced_test]
     fn taking_audio() {
         let samples: Vec<f32> = hound::WavReader::open("tests/audio/sample_4.wav")
             .unwrap()
@@ -684,7 +693,6 @@ mod tests {
         let chunk_size = 480; // 30ms
         let max_chunks = samples.len() / chunk_size;
 
-        let mut started = false;
         let mut start_time = 0;
 
         for i in 0..max_chunks {
@@ -696,21 +704,19 @@ mod tests {
                 match transition {
                     VadTransition::SpeechStart { timestamp_ms } => {
                         start_time = *timestamp_ms as u64;
-                        started = true;
                     }
                     _ => panic!("Oh no it's over"),
                 }
             }
 
-            if started
+            if session.is_speaking()
                 && (session.session_time() - Duration::from_millis(start_time))
                     >= Duration::from_millis(120)
             {
                 break;
             }
         }
-
-        assert!(started, "never found speech");
+        assert!(session.is_speaking(), "never found speech");
 
         let current_untaken = session.get_current_speech().to_vec();
 
@@ -721,5 +727,23 @@ mod tests {
             session.current_speech_samples() + taken.len(),
             current_untaken.len()
         );
+
+        assert!(session
+            .take_until(Duration::from_millis(start_time))
+            .is_empty());
+    }
+
+    /// If we take past our boundary we panic!
+    #[test]
+    #[traced_test]
+    #[should_panic]
+    fn excessive_take() {
+        let config = VadConfig::default();
+        let mut session = VadSession::new(config.clone()).unwrap();
+
+        let silence = vec![0.0; 16000];
+        let _ = session.process(&silence);
+
+        session.take_until(Duration::from_millis(1001));
     }
 }
