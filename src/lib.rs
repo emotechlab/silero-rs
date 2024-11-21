@@ -75,7 +75,7 @@ pub enum VadTransition {
         /// When the speech ended, in milliseconds since the start of the VAD session.
         end_timestamp_ms: usize,
         /// The active speech samples. This field is skipped in serde output even serde feature is enabled.
-        #[cfg_attr(feature = "serde", serde(skip))]
+        #[cfg_attr(feature = "serde", serde(default, skip))]
         samples: Vec<f32>,
     },
 }
@@ -408,7 +408,7 @@ impl VadSession {
     /// samples.
     pub fn session_time(&self) -> Duration {
         Duration::from_secs_f64(
-            (self.session_audio.len() as f64 + self.deleted_samples as f64)
+            (self.session_audio.len() + self.deleted_samples) as f64
                 / self.config.sample_rate as f64,
         )
     }
