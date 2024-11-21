@@ -4743,7 +4743,8 @@
         },
         {
           "SpeechEnd": {
-            "timestamp_ms": 1110
+            "start_timestamp_ms": 0,
+            "end_timestamp_ms": 1110
           }
         },
         {
@@ -5227,7 +5228,8 @@
         },
         {
           "SpeechEnd": {
-            "timestamp_ms": 690
+            "start_timestamp_ms": 0,
+            "end_timestamp_ms": 690
           }
         },
         {
@@ -5777,7 +5779,8 @@
         },
         {
           "SpeechEnd": {
-            "timestamp_ms": 450
+            "start_timestamp_ms": 0,
+            "end_timestamp_ms": 450
           }
         },
         {

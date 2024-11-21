@@ -180,7 +180,7 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
         if baseline != current {
             println!("{} is failing", sample.display());
             if baseline.transitions != current.transitions {
-                println!("\tDifference in transitons list!");
+                println!("\tDifference in transitions list!");
             }
             if baseline.current_silence_samples != current.current_silence_samples {
                 println!("\tDifference in silence lengths");

@@ -61,7 +61,7 @@ with open(args.input) as f:
             start = int(segment["SpeechStart"]["timestamp_ms"])
             end = None
         elif "SpeechEnd" in segment:
-            end = int(segment["SpeechEnd"]["timestamp_ms"])
+            end = int(segment["SpeechEnd"]["end_timestamp_ms"])
             if start is not None and end is not None:
                 speech_segments.append((start, end))
                 start = None
