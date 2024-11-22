@@ -185,7 +185,6 @@ impl VadSession {
 
         const VAD_BUFFER: Duration = Duration::from_millis(30); // TODO This should be configurable
         let vad_segment_length = VAD_BUFFER.as_millis() as usize * self.config.sample_rate / 1000;
-
         let unprocessed = self.deleted_samples + self.session_audio.len() - self.processed_samples;
         let num_chunks = (unprocessed + audio_frame.len()) / vad_segment_length;
 
@@ -292,19 +291,9 @@ impl VadSession {
                     if let Some(padding_index) = self.duration_to_index(start_ms) {
                         let corrected_pad = padding_index.saturating_sub(1);
                         if corrected_pad > 0 {
-                            panic!("I am removing {}", corrected_pad);
+                            self.session_audio.drain(..corrected_pad);
+                            self.deleted_samples += corrected_pad;
                         }
-                        self.session_audio.drain(..corrected_pad);
-                        self.deleted_samples += corrected_pad;
-                    }
-                } else if self.session_time() > self.config.pre_speech_pad {
-                    if let Some(padding_index) =
-                        self.duration_to_index(self.session_time() - self.config.pre_speech_pad)
-                    {
-                        let corrected_pad = padding_index.saturating_sub(1);
-                        panic!("I am removing: {}", corrected_pad);
-                        self.session_audio.drain(..corrected_pad);
-                        self.deleted_samples += corrected_pad;
                     }
                 }
             }
@@ -357,7 +346,7 @@ impl VadSession {
                 }
             }
         };
-
+        
         self.processed_samples += samples;
 
         Ok(vad_change)
