@@ -33,7 +33,6 @@ fn process_file(chunk_ms: usize) {
     }
 }
 
-
 #[divan::bench(args = [1, 2, 3, 4, 5, 6])]
 fn take(to_take: u64) {
     let mut session = VadSession::new(Default::default()).unwrap();
