@@ -279,14 +279,33 @@ impl VadSession {
         match self.state {
             VadState::Silence => {
                 if prob > self.config.positive_speech_threshold {
+                    let start_ms = self
+                        .processed_duration()
+                        .saturating_sub(self.config.pre_speech_pad);
+
                     self.state = VadState::Speech {
-                        start_ms: self
-                            .processed_duration()
-                            .saturating_sub(self.config.pre_speech_pad)
-                            .as_millis() as usize,
+                        start_ms: start_ms.as_millis() as usize,
                         redemption_passed: false,
                         speech_time: Duration::ZERO,
                     };
+
+                    if let Some(padding_index) = self.duration_to_index(start_ms) {
+                        let corrected_pad = padding_index.saturating_sub(1);
+                        if corrected_pad > 0 {
+                            panic!("I am removing {}", corrected_pad);
+                        }
+                        self.session_audio.drain(..corrected_pad);
+                        self.deleted_samples += corrected_pad;
+                    }
+                } else if self.session_time() > self.config.pre_speech_pad {
+                    if let Some(padding_index) =
+                        self.duration_to_index(self.session_time() - self.config.pre_speech_pad)
+                    {
+                        let corrected_pad = padding_index.saturating_sub(1);
+                        panic!("I am removing: {}", corrected_pad);
+                        self.session_audio.drain(..corrected_pad);
+                        self.deleted_samples += corrected_pad;
+                    }
                 }
             }
             VadState::Speech {
