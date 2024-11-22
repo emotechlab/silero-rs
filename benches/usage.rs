@@ -47,7 +47,15 @@ fn take(to_take: u64) {
 
     let _ = session.process(&samples);
 
-    // Rooster is 8s lets take 4s out.
-
     let _ = session.take_until(Duration::from_secs(to_take));
+}
+
+#[divan::bench]
+fn push_multiple_silences() {
+    let mut session = VadSession::new(Default::default()).unwrap();
+    let silence = vec![0.0; 500];
+    // Push 500ms of silence
+    for _ in 0..16 {
+        let _ = session.process(&silence);
+    }
 }
