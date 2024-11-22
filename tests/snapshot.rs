@@ -221,10 +221,11 @@ fn get_audios() -> Vec<PathBuf> {
     for entry in fs::read_dir(&audio_dir).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
-        if !path.is_dir() && path.ends_with(".wav") {
+        if !path.is_dir() {
             result.push(path.to_path_buf());
         }
     }
+    assert!(!result.is_empty());
     result
 }
 
