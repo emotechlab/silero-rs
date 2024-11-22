@@ -1,5 +1,6 @@
 use hound::WavReader;
 use silero::VadSession;
+use std::time::Duration;
 
 fn main() {
     divan::main();
@@ -20,7 +21,6 @@ fn process_file(chunk_ms: usize) {
         .collect();
 
     let num_chunks = samples.len() / chunk_size;
-    let mut last_end = 0;
     for i in 0..num_chunks {
         let start = i * chunk_size;
         let end = if i < num_chunks - 1 {
@@ -31,4 +31,24 @@ fn process_file(chunk_ms: usize) {
 
         let _transitions = session.process(&samples[start..end]).unwrap();
     }
+}
+
+
+#[divan::bench(args = [1, 2, 3, 4, 5, 6])]
+fn take(to_take: u64) {
+    let mut session = VadSession::new(Default::default()).unwrap();
+    let samples: Vec<f32> = WavReader::open("tests/audio/rooster.wav")
+        .unwrap()
+        .into_samples()
+        .map(|x| {
+            let modified = x.unwrap_or(0i16) as f32 / (i16::MAX as f32);
+            modified.clamp(-1.0, 1.0)
+        })
+        .collect();
+
+    let _ = session.process(&samples);
+
+    // Rooster is 8s lets take 4s out.
+
+    let _ = session.take_until(Duration::from_secs(to_take));
 }
