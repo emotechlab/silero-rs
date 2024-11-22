@@ -342,7 +342,8 @@ impl VadSession {
 
                             // Need to delete the current speech samples from internal buffer to prevent OOM.
                             assert!(self.speech_start_ms.is_some());
-                            self.cached_active_speech = self.get_current_speech().to_vec();
+                            self.cached_active_speech =
+                                self.get_speech(start_ms, Some(speech_end_ms)).to_vec();
                             let speech_end_idx = self.unchecked_duration_to_index(
                                 Duration::from_millis(speech_end_ms as u64),
                             );

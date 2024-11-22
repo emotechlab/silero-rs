@@ -217,7 +217,6 @@ fn compare_configs(a: &VadConfig, b: &VadConfig) {
 
 fn get_audios() -> Vec<PathBuf> {
     let audio_dir = Path::new("tests/audio");
-    assert!(audio_dir.exists());
     let mut result = vec![];
     for entry in fs::read_dir(&audio_dir).unwrap() {
         let entry = entry.unwrap();
@@ -226,7 +225,7 @@ fn get_audios() -> Vec<PathBuf> {
             result.push(path.to_path_buf());
         }
     }
-    assert_eq!(!result.is_empty());
+    assert!(!result.is_empty());
     result
 }
 
