@@ -4,7 +4,7 @@ pub use crate::audio_resampler::resample_pcm;
 pub use crate::errors::VadError;
 use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
-use ort::{GraphOptimizationLevel, Session};
+use ort::session::{builder::GraphOptimizationLevel, Session};
 use std::ops::Range;
 use std::path::Path;
 use std::time::Duration;
@@ -215,7 +215,7 @@ impl VadSession {
         Ok(transitions)
     }
 
-    pub fn forward(&mut self, input: Vec<f32>) -> Result<ort::Value> {
+    pub fn forward(&mut self, input: Vec<f32>) -> Result<ort::value::Value> {
         let samples = input.len();
         let audio_tensor = Array2::from_shape_vec((1, samples), input)?;
         let mut result = self.model.run(ort::inputs![
