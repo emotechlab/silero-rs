@@ -346,7 +346,7 @@ impl VadSession {
                 }
             }
         };
-        
+
         self.processed_samples += samples;
 
         Ok(vad_change)
