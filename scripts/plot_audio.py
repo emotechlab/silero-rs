@@ -48,6 +48,7 @@ with open(args.input) as f:
     vad = data["summary"][args.audio]
     silence_samples = vad["current_silence_samples"]
     speech_samples = vad["current_speech_samples"]
+    audio_samples = vad["current_session_samples"]
     likelihoods = vad["likelihoods"]
     redemption_time = rust_duration_to_seconds(data["config"]["redemption_time"])
     pre_speech_pad = rust_duration_to_seconds(data["config"]["pre_speech_pad"])
@@ -99,6 +100,7 @@ ax3.set(title = "Network likelihoods")
 
 ax2.plot(silence_samples, label = "Current silence samples")
 ax2.plot(speech_samples, label = "Current speech samples")
+ax2.plot(audio_samples, label = "Current stored samples")
 ax3.plot(likelihoods, label = "network likelihoods")
 labeled_start = False
 labeled_end = False
