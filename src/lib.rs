@@ -504,6 +504,14 @@ impl VadSession {
     pub fn current_silence_duration(&self) -> Duration {
         Duration::from_millis((self.silent_samples / (self.config.sample_rate / 1000)) as u64)
     }
+
+    /// Returns an inclusive range of the audio currently stored in the session buffer. The
+    /// previously complete active speech segment may exceed these bounds!
+    pub fn current_buffer_range(&self) -> (Duration, Duration) {
+        let start =
+            Duration::from_secs_f64(self.deleted_samples as f64 / self.config.sample_rate as f64);
+        (start, self.session_time())
+    }
 }
 
 impl Default for VadConfig {
@@ -721,7 +729,18 @@ mod tests {
 
         let current_untaken = session.get_current_speech().to_vec();
 
-        let taken = session.take_until(Duration::from_millis(start_time + 60));
+        let session_end = session.session_time();
+
+        let (start, end) = session.current_buffer_range();
+        assert!(start, duration::from_secs(0));
+        assert!(end, session_end);
+
+        let until = Duration::from_millis(start_time + 60);
+        let taken = session.take_until(until);
+
+        let (start, end) = session.current_buffer_range();
+        assert!(until, duration::from_secs(0));
+        assert!(end, session_end);
 
         assert!(session.current_speech_samples() < current_untaken.len());
         assert_eq!(
