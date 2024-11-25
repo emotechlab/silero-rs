@@ -745,7 +745,7 @@ mod tests {
         let taken = session.take_until(until);
 
         let (start, end) = session.current_buffer_range();
-        assert_eq!(until, start);
+        assert_eq!(start, until);
         assert_eq!(end, session_end);
 
         assert!(session.current_speech_samples() < current_untaken.len());
