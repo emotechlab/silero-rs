@@ -732,15 +732,15 @@ mod tests {
         let session_end = session.session_time();
 
         let (start, end) = session.current_buffer_range();
-        assert!(start, duration::from_secs(0));
-        assert!(end, session_end);
+        assert_eq!(start, Duration::from_secs(0));
+        assert_eq!(end, session_end);
 
         let until = Duration::from_millis(start_time + 60);
         let taken = session.take_until(until);
 
         let (start, end) = session.current_buffer_range();
-        assert!(until, duration::from_secs(0));
-        assert!(end, session_end);
+        assert_eq!(start, until);
+        assert_eq!(end, session_end);
 
         assert!(session.current_speech_samples() < current_untaken.len());
         assert_eq!(
