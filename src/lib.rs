@@ -504,6 +504,12 @@ impl VadSession {
     pub fn current_silence_duration(&self) -> Duration {
         Duration::from_millis((self.silent_samples / (self.config.sample_rate / 1000)) as u64)
     }
+
+    /// Utility function to add a bit more tracking into the snapshot tests
+    #[doc(hidden)]
+    pub fn session_audio_samples(&self) -> usize {
+        self.session_audio.len()
+    }
 }
 
 impl Default for VadConfig {

@@ -32,6 +32,7 @@ struct Summary {
 #[derive(Default, Debug, PartialEq, Deserialize, Serialize)]
 struct Report {
     transitions: Vec<VadTransition>,
+    current_session_samples: Vec<usize>,
     current_silence_samples: Vec<usize>,
     current_speech_samples: Vec<usize>,
     likelihoods: Vec<usize>,
@@ -122,6 +123,9 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
             report
                 .current_speech_samples
                 .push(session.current_speech_samples());
+            report
+                .current_session_samples
+                .push(session.session_audio_samples());
 
             if let Ok(network_outputs) = session.forward(samples[last_end..end].to_vec()) {
                 let prob = *network_outputs
