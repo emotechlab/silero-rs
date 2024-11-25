@@ -505,12 +505,20 @@ impl VadSession {
         Duration::from_millis((self.silent_samples / (self.config.sample_rate / 1000)) as u64)
     }
 
+
     /// Returns an inclusive range of the audio currently stored in the session buffer. The
     /// previously complete active speech segment may exceed these bounds!
     pub fn current_buffer_range(&self) -> (Duration, Duration) {
         let start =
             Duration::from_secs_f64(self.deleted_samples as f64 / self.config.sample_rate as f64);
         (start, self.session_time())
+    }
+
+    /// Utility function to add a bit more tracking into the snapshot tests
+    #[doc(hidden)]
+    pub fn session_audio_samples(&self) -> usize {
+        self.session_audio.len()
+
     }
 }
 
