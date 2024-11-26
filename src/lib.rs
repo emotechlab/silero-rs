@@ -254,6 +254,7 @@ impl VadSession {
     fn process_internal(&mut self, range: Range<usize>) -> Result<Option<VadTransition>> {
         let audio_frame = self.session_audio[range].to_vec();
         let samples = audio_frame.len();
+        let frame_duration = self.samples_to_duration(samples);
 
         let result = self.forward(audio_frame)?;
 
@@ -294,8 +295,7 @@ impl VadSession {
                 ref mut redemption_passed,
                 ref mut speech_time,
             } => {
-                *speech_time +=
-                    Duration::from_secs_f64(samples as f64 / self.config.sample_rate as f64);
+                *speech_time += frame_duration;
                 if !*redemption_passed && *speech_time > self.config.min_speech_time {
                     *redemption_passed = true;
                     // TODO: the pre speech padding should not cross over the previous speech->silence
@@ -459,24 +459,19 @@ impl VadSession {
     /// account the switching and padding parameters of the VAD whereas the silence measure ignores
     /// them instead of just focusing on raw network output.
     pub fn current_speech_duration(&self) -> Duration {
-        Duration::from_millis(
-            (self.current_speech_samples() as f32 / self.config.sample_rate as f32 * 1000.0) as u64,
-        )
+        self.samples_to_duration(self.current_speech_samples())
     }
 
     /// Get the current duration of the VAD session, which includes both processed and unprocessed
     /// samples.
     pub fn session_time(&self) -> Duration {
-        Duration::from_secs_f64(
-            (self.session_audio.len() + self.deleted_samples) as f64
-                / self.config.sample_rate as f64,
-        )
+        self.samples_to_duration(self.session_audio.len() + self.deleted_samples)
     }
 
     /// Get the current duration of processed samples. A sample is considered as processed if it has
     /// been seen by Silero neural network.
     pub fn processed_duration(&self) -> Duration {
-        Duration::from_secs_f64(self.processed_samples as f64 / self.config.sample_rate as f64)
+        self.samples_to_duration(self.processed_samples)
     }
 
     /// Reset the status of the model
@@ -502,15 +497,21 @@ impl VadSession {
     /// measure is a raw unprocessed look of how many segments since the last speech are below the
     /// negative speech threshold.
     pub fn current_silence_duration(&self) -> Duration {
-        Duration::from_millis((self.silent_samples / (self.config.sample_rate / 1000)) as u64)
+        self.samples_to_duration(self.silent_samples)
     }
 
     /// Returns an inclusive range of the audio currently stored in the session buffer. The
     /// previously complete active speech segment may exceed these bounds!
     pub fn current_buffer_range(&self) -> (Duration, Duration) {
-        let start =
-            Duration::from_secs_f64(self.deleted_samples as f64 / self.config.sample_rate as f64);
-        (start, self.session_time())
+        (
+            self.samples_to_duration(self.deleted_samples),
+            self.session_time(),
+        )
+    }
+
+    #[inline(always)]
+    fn samples_to_duration(&self, samples: usize) -> Duration {
+        Duration::from_secs_f64(samples as f64 / self.config.sample_rate as f64)
     }
 
     /// Utility function to add a bit more tracking into the snapshot tests
