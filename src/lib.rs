@@ -185,7 +185,6 @@ impl VadSession {
 
         const VAD_BUFFER: Duration = Duration::from_millis(30); // TODO This should be configurable
         let vad_segment_length = VAD_BUFFER.as_millis() as usize * self.config.sample_rate / 1000;
-
         let unprocessed = self.deleted_samples + self.session_audio.len() - self.processed_samples;
         let num_chunks = (unprocessed + audio_frame.len()) / vad_segment_length;
 
@@ -280,14 +279,23 @@ impl VadSession {
         match self.state {
             VadState::Silence => {
                 if prob > self.config.positive_speech_threshold {
+                    let start_ms = self
+                        .processed_duration()
+                        .saturating_sub(self.config.pre_speech_pad);
+
                     self.state = VadState::Speech {
-                        start_ms: self
-                            .processed_duration()
-                            .saturating_sub(self.config.pre_speech_pad)
-                            .as_millis() as usize,
+                        start_ms: start_ms.as_millis() as usize,
                         redemption_passed: false,
                         speech_time: Duration::ZERO,
                     };
+
+                    if let Some(padding_index) = self.duration_to_index(start_ms) {
+                        let corrected_pad = padding_index.saturating_sub(1);
+                        if corrected_pad > 0 {
+                            self.session_audio.drain(..corrected_pad);
+                            self.deleted_samples += corrected_pad;
+                        }
+                    }
                 }
             }
             VadState::Speech {
