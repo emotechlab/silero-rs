@@ -584,7 +584,7 @@ impl VadConfig {
 
     pub fn validate_config(&self) -> Result<()> {
         if self.post_speech_pad > self.redemption_time {
-            bail!("post speech pad cannot be longer than redemption time, as it's illogical")
+            bail!("post speech pad cannot be longer than redemption time")
         }
 
         #[cfg(feature = "audio_resampler")]
