@@ -214,7 +214,7 @@ fn compare_configs(a: &VadConfig, b: &VadConfig) {
     assert_ulps_eq!(a.positive_speech_threshold, b.positive_speech_threshold);
     assert_ulps_eq!(a.negative_speech_threshold, b.negative_speech_threshold);
     assert_eq!(a.pre_speech_pad, b.pre_speech_pad);
-    assert_eq!(a.post_speech_pad, b.post_speech_pad);
+    assert_eq!(a.redemption_time, b.redemption_time);
     assert_eq!(a.sample_rate, b.sample_rate);
     assert_eq!(a.min_speech_time, b.min_speech_time);
 }
