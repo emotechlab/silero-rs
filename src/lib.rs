@@ -325,24 +325,33 @@ impl VadSession {
                                 self.config.post_speech_pad.as_millis() as usize
                                     <= self.silent_samples
                             );
-                            assert!(speech_end_with_pad_ms < self.session_audio.len());
+                            assert!(
+                                self.duration_to_index(Duration::from_millis(
+                                    speech_end_with_pad_ms as u64
+                                ))
+                                .unwrap()
+                                    < self.session_audio.len()
+                            );
 
                             vad_change = Some(VadTransition::SpeechEnd {
                                 start_timestamp_ms: start_ms,
                                 end_timestamp_ms: speech_end_ms,
-                                samples: self.get_current_speech().to_vec(),
+                                samples: self
+                                    .get_speech(start_ms, Some(speech_end_with_pad_ms))
+                                    .to_vec(),
                             });
 
                             // Need to delete the current speech samples from internal buffer to prevent OOM.
                             assert!(self.speech_start_ms.is_some());
-                            self.cached_active_speech =
-                                self.get_speech(start_ms, Some(speech_end_ms)).to_vec();
-                            let speech_end_idx = self.unchecked_duration_to_index(
-                                Duration::from_millis(speech_end_ms as u64),
+                            self.cached_active_speech = self
+                                .get_speech(start_ms, Some(speech_end_with_pad_ms))
+                                .to_vec();
+                            let speech_end_with_pad_idx = self.unchecked_duration_to_index(
+                                Duration::from_millis(speech_end_with_pad_ms as u64),
                             );
-                            let to_delete_idx = 0..(speech_end_idx + 1);
+                            let to_delete_idx = 0..(speech_end_with_pad_idx + 1);
                             self.session_audio.drain(to_delete_idx);
-                            self.deleted_samples += speech_end_idx + 1;
+                            self.deleted_samples += speech_end_with_pad_idx + 1;
                             self.speech_start_ms = None;
                         }
                         self.state = VadState::Silence
@@ -540,7 +549,7 @@ impl Default for VadConfig {
             positive_speech_threshold: 0.5,
             negative_speech_threshold: 0.35,
             pre_speech_pad: Duration::from_millis(600),
-            post_speech_pad: Duration::from_millis(600),
+            post_speech_pad: Duration::from_millis(0),
             redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
             min_speech_time: Duration::from_millis(90),
