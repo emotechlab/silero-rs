@@ -22,6 +22,7 @@ pub struct VadConfig {
     pub positive_speech_threshold: f32,
     pub negative_speech_threshold: f32,
     pub pre_speech_pad: Duration,
+    pub post_speech_pad: Duration,
     pub redemption_time: Duration,
     pub sample_rate: usize,
     pub min_speech_time: Duration,
@@ -315,6 +316,17 @@ impl VadSession {
                                 - self.silent_samples)
                                 / (self.config.sample_rate / 1000);
 
+                            // Since speech_end_ms does not include silent_samples, the post
+                            // padding should be added to speech_end_ms.
+                            let speech_end_with_pad_ms =
+                                speech_end_ms + self.config.post_speech_pad.as_millis() as usize;
+                            // TODO: Just some quick double checks, remember to delete these before git merge.
+                            assert!(
+                                self.config.post_speech_pad.as_millis() as usize
+                                    <= self.silent_samples
+                            );
+                            assert!(speech_end_with_pad_ms < self.session_audio.len());
+
                             vad_change = Some(VadTransition::SpeechEnd {
                                 start_timestamp_ms: start_ms,
                                 end_timestamp_ms: speech_end_ms,
@@ -528,6 +540,7 @@ impl Default for VadConfig {
             positive_speech_threshold: 0.5,
             negative_speech_threshold: 0.35,
             pre_speech_pad: Duration::from_millis(600),
+            post_speech_pad: Duration::from_millis(600),
             redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
             min_speech_time: Duration::from_millis(90),
@@ -540,6 +553,7 @@ impl VadConfig {
         positive_speech_threshold: f32,
         negative_speech_threshold: f32,
         pre_speech_pad: Duration,
+        post_speech_pad: Duration,
         redemption_time: Duration,
         sample_rate: usize,
         min_speech_time: Duration,
@@ -548,6 +562,7 @@ impl VadConfig {
             positive_speech_threshold,
             negative_speech_threshold,
             pre_speech_pad,
+            post_speech_pad,
             redemption_time,
             sample_rate,
             min_speech_time,
@@ -559,6 +574,10 @@ impl VadConfig {
     }
 
     pub fn validate_config(&self) -> Result<()> {
+        if self.post_speech_pad > self.redemption_time {
+            bail!("post speech pad cannot be longer than redemption time, as it's illogical")
+        }
+
         #[cfg(feature = "audio_resampler")]
         return Ok(());
 

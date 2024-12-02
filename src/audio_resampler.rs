@@ -57,7 +57,7 @@ mod tests {
     fn get_audios() -> Vec<PathBuf> {
         let audio_dir = Path::new("tests/audio/");
         let mut result = vec![];
-        for entry in read_dir(&audio_dir).unwrap() {
+        for entry in read_dir(audio_dir).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
             if !path.is_dir() && path.extension().unwrap() == "wav" {
