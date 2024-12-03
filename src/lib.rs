@@ -315,16 +315,17 @@ impl VadSession {
                                 - self.silent_samples)
                                 / (self.config.sample_rate / 1000);
 
+                            self.cached_active_speech =
+                                self.get_speech(start_ms, Some(speech_end_ms)).to_vec();
+
                             vad_change = Some(VadTransition::SpeechEnd {
                                 start_timestamp_ms: start_ms,
                                 end_timestamp_ms: speech_end_ms,
-                                samples: self.get_current_speech().to_vec(),
+                                samples: self.cached_active_speech.clone(),
                             });
 
                             // Need to delete the current speech samples from internal buffer to prevent OOM.
                             assert!(self.speech_start_ms.is_some());
-                            self.cached_active_speech =
-                                self.get_speech(start_ms, Some(speech_end_ms)).to_vec();
                             let speech_end_idx = self.unchecked_duration_to_index(
                                 Duration::from_millis(speech_end_ms as u64),
                             );
