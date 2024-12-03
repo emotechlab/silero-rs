@@ -349,9 +349,12 @@ impl VadSession {
                             let speech_end_with_pad_idx = self.unchecked_duration_to_index(
                                 Duration::from_millis(speech_end_with_pad_ms as u64),
                             );
-                            let to_delete_idx = 0..(speech_end_with_pad_idx + 1);
+                            let speech_end_idx = self.unchecked_duration_to_index(
+                                Duration::from_millis(speech_end_ms as u64),
+                            );
+                            let to_delete_idx = 0..(speech_end_idx + 1);
                             self.session_audio.drain(to_delete_idx);
-                            self.deleted_samples += speech_end_with_pad_idx + 1;
+                            self.deleted_samples += speech_end_idx + 1;
                             self.speech_start_ms = None;
                         }
                         self.state = VadState::Silence
