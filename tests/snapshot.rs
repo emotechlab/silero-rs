@@ -13,7 +13,6 @@
 //! the audio folder as well.
 //!
 //! Also, all test audios will be 16kHz to make it easy to test silero in both 16kHz and 8kHz modes.
-use anyhow::{bail, Result};
 use approx::assert_ulps_eq;
 use hound::WavReader;
 use serde::{Deserialize, Serialize};
@@ -21,6 +20,7 @@ use silero::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tracing_test::traced_test;
 
 #[derive(Default, Debug, Deserialize, Serialize)]
@@ -196,48 +196,69 @@ impl Report {
 }
 
 #[test]
-#[traced_test]
+// #[traced_test]
 fn chunk_50_default_params_16k() {
-    run_snapshot_test(50, VadConfig::default(), "default");
+    let mut config = VadConfig::default();
+    run_snapshot_test(50, &config, "default");
+
+    config.post_speech_pad = Duration::from_millis(100);
+    run_snapshot_test(50, &config, "default");
 }
 
 #[test]
-#[traced_test]
+// #[traced_test]
 fn chunk_50_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
-    run_snapshot_test(50, config, "default");
+    run_snapshot_test(50, &config, "default");
+
+    config.post_speech_pad = Duration::from_millis(100);
+    run_snapshot_test(50, &config, "default");
 }
 
 #[test]
-#[traced_test]
+// #[traced_test]
 fn chunk_30_default_params_16k() {
-    run_snapshot_test(30, VadConfig::default(), "default");
+    let mut config = VadConfig::default();
+    run_snapshot_test(30, &config.clone(), "default");
+
+    config.post_speech_pad = Duration::from_millis(100);
+    run_snapshot_test(30, &config, "default");
 }
 
 #[test]
-#[traced_test]
+// #[traced_test]
 fn chunk_30_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
-    run_snapshot_test(30, config, "default");
+    run_snapshot_test(30, &config, "default");
+
+    config.post_speech_pad = Duration::from_millis(100);
+    run_snapshot_test(30, &config, "default");
 }
 
 #[test]
-#[traced_test]
+// #[traced_test]
 fn chunk_20_default_params_16k() {
-    run_snapshot_test(20, VadConfig::default(), "default");
+    let mut config = VadConfig::default();
+    run_snapshot_test(20, &config, "default");
+
+    config.post_speech_pad = Duration::from_millis(100);
+    run_snapshot_test(20, &config, "default");
 }
 
 #[test]
-#[traced_test]
+// #[traced_test]
 fn chunk_20_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
-    run_snapshot_test(20, config, "default");
+    run_snapshot_test(20, &config, "default");
+
+    config.post_speech_pad = Duration::from_millis(100);
+    run_snapshot_test(20, &config, "default");
 }
 
-fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
+fn run_snapshot_test(chunk_ms: usize, config: &VadConfig, config_name: &str) {
     let audios = get_audios();
 
     let chunk_size = get_chunk_size(config.sample_rate, chunk_ms);
@@ -302,7 +323,7 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
     let summary = Summary {
         input_size_ms: chunk_ms,
         summary,
-        config,
+        config: config.clone(),
     };
     let report = serde_json::to_string_pretty(&summary).unwrap();
 
