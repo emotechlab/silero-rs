@@ -196,7 +196,7 @@ impl Report {
 }
 
 #[test]
-// #[traced_test]
+#[traced_test]
 fn chunk_50_default_params_16k() {
     let mut config = VadConfig::default();
     run_snapshot_test(50, &config, "default");
@@ -206,7 +206,7 @@ fn chunk_50_default_params_16k() {
 }
 
 #[test]
-// #[traced_test]
+#[traced_test]
 fn chunk_50_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
@@ -217,7 +217,7 @@ fn chunk_50_default_params_8k() {
 }
 
 #[test]
-// #[traced_test]
+#[traced_test]
 fn chunk_30_default_params_16k() {
     let mut config = VadConfig::default();
     run_snapshot_test(30, &config.clone(), "default");
@@ -227,7 +227,7 @@ fn chunk_30_default_params_16k() {
 }
 
 #[test]
-// #[traced_test]
+#[traced_test]
 fn chunk_30_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
@@ -238,7 +238,7 @@ fn chunk_30_default_params_8k() {
 }
 
 #[test]
-// #[traced_test]
+#[traced_test]
 fn chunk_20_default_params_16k() {
     let mut config = VadConfig::default();
     run_snapshot_test(20, &config, "default");
@@ -248,7 +248,7 @@ fn chunk_20_default_params_16k() {
 }
 
 #[test]
-// #[traced_test]
+#[traced_test]
 fn chunk_20_default_params_8k() {
     let mut config = VadConfig::default();
     config.sample_rate = 8000;
