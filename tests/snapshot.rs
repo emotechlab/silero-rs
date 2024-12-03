@@ -13,20 +13,77 @@
 //! the audio folder as well.
 //!
 //! Also, all test audios will be 16kHz to make it easy to test silero in both 16kHz and 8kHz modes.
+use anyhow::{bail, Result};
 use approx::assert_ulps_eq;
 use hound::WavReader;
 use serde::{Deserialize, Serialize};
 use silero::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing_test::traced_test;
 
-#[derive(Default, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Default, Debug, Deserialize, Serialize)]
 struct Summary {
     input_size_ms: usize,
     config: VadConfig,
     summary: BTreeMap<PathBuf, Report>,
+}
+
+impl Summary {
+    /// Different config leads to different summary. This eq method will consider this point when
+    /// checking equality by calculating the expected difference introduced by config modifications.
+    ///
+    /// This method uses None to represent no difference, and Some(HashMap<PathBuf, Vec<String>>) to
+    /// report all the differences found in each file.
+    fn eq(&self, other: &Self) -> Option<HashMap<PathBuf, Vec<String>>> {
+        // TODO: what if input_size_ms is different?
+        let mut errors: HashMap<PathBuf, Vec<String>> = HashMap::new();
+
+        assert_eq!(self.summary.len(), other.summary.len());
+        for (audio_file, baseline) in &self.summary {
+            match other.summary.get(audio_file) {
+                None => {
+                    errors.entry(audio_file.clone()).or_default().push(format!(
+                        "Cannot find report for audio file {}",
+                        audio_file.display()
+                    ));
+                }
+                Some(current) => {
+                    if !baseline.eq_transitions(current, 0) {
+                        errors
+                            .entry(audio_file.clone())
+                            .or_default()
+                            .push("Difference in transitions".to_string());
+                    }
+                    if !baseline.eq_current_session_samples(current, 0) {
+                        errors
+                            .entry(audio_file.clone())
+                            .or_default()
+                            .push("Difference in current_session_samples".to_string());
+                    }
+                    if !baseline.eq_current_silence_samples(current, 0) {
+                        errors
+                            .entry(audio_file.clone())
+                            .or_default()
+                            .push("Difference in current_silence_samples".to_string());
+                    }
+                    if !baseline.eq_current_speech_samples(current, 0) {
+                        errors
+                            .entry(audio_file.clone())
+                            .or_default()
+                            .push("Difference in speech_samples".to_string());
+                    }
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            None
+        } else {
+            Some(errors)
+        }
+    }
 }
 
 #[derive(Default, Debug, PartialEq, Deserialize, Serialize)]
@@ -36,6 +93,28 @@ struct Report {
     current_silence_samples: Vec<usize>,
     current_speech_samples: Vec<usize>,
     likelihoods: Vec<usize>,
+}
+
+impl Report {
+    fn eq_transitions(&self, other: &Self, _allowed_difference: usize) -> bool {
+        self.transitions == other.transitions
+    }
+
+    fn eq_current_session_samples(&self, other: &Self, _allowed_difference: usize) -> bool {
+        self.current_session_samples == other.current_session_samples
+    }
+
+    fn eq_current_speech_samples(&self, other: &Self, _allowed_difference: usize) -> bool {
+        self.current_speech_samples == other.current_speech_samples
+    }
+
+    fn eq_current_silence_samples(&self, other: &Self, _allowed_difference: usize) -> bool {
+        self.current_silence_samples == other.current_silence_samples
+    }
+
+    fn eq_likelihoods(&self, other: &Self, _allowed_difference: usize) -> bool {
+        self.likelihoods == other.likelihoods
+    }
 }
 
 #[test]
