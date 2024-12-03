@@ -335,7 +335,7 @@ impl VadSession {
 
                             vad_change = Some(VadTransition::SpeechEnd {
                                 start_timestamp_ms: start_ms,
-                                end_timestamp_ms: speech_end_ms,
+                                end_timestamp_ms: speech_end_with_pad_ms,
                                 samples: self
                                     .get_speech(start_ms, Some(speech_end_with_pad_ms))
                                     .to_vec(),
