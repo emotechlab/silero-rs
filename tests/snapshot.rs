@@ -99,15 +99,7 @@ impl Report {
         // Some differences are introduced by modified config and they are expected.
         let allowed_post_pad_diff = (self_config.post_speech_pad.as_millis() as isize
             - other_config.post_speech_pad.as_millis() as isize)
-            .abs() as usize
-            * self_config.sample_rate
-            / 1000;
-        dbg!(
-            self_config.post_speech_pad.as_millis() as isize,
-            other_config.post_speech_pad.as_millis() as isize,
-            self_config.sample_rate,
-            allowed_post_pad_diff
-        );
+            .abs() as usize;
 
         for (baseline, current) in self.transitions.iter().zip(other.transitions.iter()) {
             match (baseline, current) {
@@ -159,10 +151,29 @@ impl Report {
     fn eq_current_speech_samples(
         &self,
         other: &Self,
-        _self_config: &VadConfig,
-        _other_config: &VadConfig,
+        self_config: &VadConfig,
+        other_config: &VadConfig,
     ) -> bool {
-        self.current_speech_samples == other.current_speech_samples
+        // Some differences are introduced by modified config and they are expected.
+        let allowed_post_pad_diff = (self_config.post_speech_pad.as_millis() as isize
+            - other_config.post_speech_pad.as_millis() as isize)
+            .abs() as usize
+            * self_config.sample_rate
+            / 1000;
+
+        for (baseline, current) in self
+            .current_speech_samples
+            .iter()
+            .zip(other.current_speech_samples.iter())
+        {
+            if baseline != current
+                && (*baseline as isize - *current as isize).abs() as usize != allowed_post_pad_diff
+            {
+                return false;
+            }
+        }
+
+        true
     }
 
     fn eq_current_silence_samples(
