@@ -344,6 +344,22 @@ impl VadSession {
         Ok(vad_change)
     }
 
+    /// Removes the starting silence from the session audio. If the vad is speaking this will
+    /// remove all audio up-to the utterance start. If it is not speaking it will keep silence
+    /// equal to the pre-speech padding frames at the end.
+    pub fn trim_start_silence(&mut self) {
+        let last_index = if let Some(start_ms) = self.speech_start_ms {
+            self.duration_to_index(Duration::from_millis(start_ms as u64))
+        } else {
+            let remove_to = self.session_time() - self.config.pre_speech_pad;
+            self.duration_to_index(remove_to)
+        };
+        if let Some(last_index) = last_index {
+            self.session_audio.drain(..last_index);
+            self.deleted_samples += last_index;
+        }
+    }
+
     /// This will remove audio in the buffer until a duration and panic if it exceeds the duration.
     /// This won't touch the active speech cache or the VAD state. It's intended usage is if the
     /// current speech buffer is too long and you want to remove some for processing and not have
@@ -766,11 +782,74 @@ mod tests {
     #[should_panic]
     fn excessive_take() {
         let config = VadConfig::default();
-        let mut session = VadSession::new(config.clone()).unwrap();
+        let mut session = VadSession::new(config).unwrap();
 
         let silence = vec![0.0; 16000];
         let _ = session.process(&silence);
 
         session.take_until(Duration::from_millis(1001));
+    }
+
+    /// If we just have silence we don't want to remove the padding silence
+    #[test]
+    #[traced_test]
+    fn trim_start_silence_keep_padding() {
+        let config = VadConfig::default();
+        let mut session = VadSession::new(config.clone()).unwrap();
+        let silence = vec![0.0; 16000];
+        let mut added_samples = 0;
+        while session.samples_to_duration(session.session_audio.len()) < config.pre_speech_pad * 2 {
+            added_samples += silence.len();
+            session.process(&silence).unwrap();
+        }
+
+        session.trim_start_silence();
+
+        let (start, end) = session.current_buffer_range();
+        assert!(end - start == config.pre_speech_pad);
+        assert!(session.session_audio.len() < added_samples);
+        assert_eq!(
+            added_samples - session.deleted_samples,
+            session.session_audio.len()
+        );
+    }
+
+    /// If we have speech in the current buffer then trimming silence shouldn't go beyond the start
+    /// ms! We'll use sample_1 since it starts with a second of speech and then goes silent for a
+    /// bit.
+    #[test]
+    #[traced_test]
+    fn trim_to_audio_start() {
+        // the start of sample 1 is speech so we'll
+        let mut samples: Vec<f32> = hound::WavReader::open("tests/audio/sample_1.wav")
+            .unwrap()
+            .into_samples()
+            .map(|x| {
+                let modified = x.unwrap_or(0i16) as f32 / (i16::MAX as f32);
+                modified.clamp(-1.0, 1.0)
+            })
+            .collect();
+
+        // Keep only the first second
+        samples.resize(15000, 0.0);
+
+        // Add some starting silence
+        let mut end_audio = vec![0.0; 16000];
+        end_audio.append(&mut samples);
+
+        let config = VadConfig::default();
+        let mut session = VadSession::new(config.clone()).unwrap();
+
+        let res = session.process(&end_audio).unwrap();
+
+        // This ensures we just have a start audio and no more!
+        assert_eq!(res.len(), 1);
+
+        assert!(matches!(session.speech_start_ms, Some(x) if x > 0));
+
+        session.trim_start_silence();
+        let (start, _end) = session.current_buffer_range();
+
+        assert_eq!(start.as_millis() as usize, session.speech_start_ms.unwrap());
     }
 }

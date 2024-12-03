@@ -13,6 +13,7 @@ code
 - Added new pub function `validate_input` for `VadSession` struct. `process` function will use it to make sure input is valid in debug mode.
 - Added a new method: `processed_duration`. A sample is considered as processed if it has been seen by Silero NN.
 - API to get current start/end time of session audio
+- Ability to trim the starting silence to keep buffer size down
 
 ### Fixed
 - Potential OOM when handling long autio.
