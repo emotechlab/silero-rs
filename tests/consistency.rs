@@ -2,32 +2,38 @@ use hound::WavReader;
 use silero::*;
 use std::fmt;
 use std::path::Path;
+use tracing_test::traced_test;
 
 #[test]
+#[traced_test]
 fn compare_audio_1() {
     let audio = Path::new("tests/audio/sample_1.wav");
     compare_audio(&audio);
 }
 
 #[test]
+#[traced_test]
 fn compare_audio_2() {
     let audio = Path::new("tests/audio/sample_2.wav");
     compare_audio(&audio);
 }
 
 #[test]
+#[traced_test]
 fn compare_audio_3() {
     let audio = Path::new("tests/audio/sample_3.wav");
     compare_audio(&audio);
 }
 
 #[test]
+#[traced_test]
 fn compare_audio_4() {
     let audio = Path::new("tests/audio/sample_4.wav");
     compare_audio(&audio);
 }
 
 #[test]
+#[traced_test]
 fn compare_birds() {
     let audio = Path::new("tests/audio/birds.wav");
     compare_audio(&audio);
