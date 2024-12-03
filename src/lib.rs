@@ -549,7 +549,7 @@ impl Default for VadConfig {
             positive_speech_threshold: 0.5,
             negative_speech_threshold: 0.35,
             pre_speech_pad: Duration::from_millis(600),
-            post_speech_pad: Duration::from_millis(0),
+            post_speech_pad: Duration::from_millis(100),
             redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
             min_speech_time: Duration::from_millis(90),

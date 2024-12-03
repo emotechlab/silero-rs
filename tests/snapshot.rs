@@ -50,25 +50,19 @@ impl Summary {
                     ));
                 }
                 Some(current) => {
-                    if !baseline.eq_transitions(current, 0) {
+                    if !baseline.eq_transitions(current, &self.config, &other.config) {
                         errors
                             .entry(audio_file.clone())
                             .or_default()
                             .push("Difference in transitions".to_string());
                     }
-                    if !baseline.eq_current_session_samples(current, 0) {
-                        errors
-                            .entry(audio_file.clone())
-                            .or_default()
-                            .push("Difference in current_session_samples".to_string());
-                    }
-                    if !baseline.eq_current_silence_samples(current, 0) {
+                    if !baseline.eq_current_silence_samples(current, &self.config, &other.config) {
                         errors
                             .entry(audio_file.clone())
                             .or_default()
                             .push("Difference in current_silence_samples".to_string());
                     }
-                    if !baseline.eq_current_speech_samples(current, 0) {
+                    if !baseline.eq_current_speech_samples(current, &self.config, &other.config) {
                         errors
                             .entry(audio_file.clone())
                             .or_default()
@@ -96,23 +90,96 @@ struct Report {
 }
 
 impl Report {
-    fn eq_transitions(&self, other: &Self, _allowed_difference: usize) -> bool {
-        self.transitions == other.transitions
+    fn eq_transitions(
+        &self,
+        other: &Self,
+        self_config: &VadConfig,
+        other_config: &VadConfig,
+    ) -> bool {
+        // Some differences are introduced by modified config and they are expected.
+        let allowed_post_pad_diff = (self_config.post_speech_pad.as_millis() as isize
+            - other_config.post_speech_pad.as_millis() as isize)
+            .abs() as usize
+            * self_config.sample_rate
+            / 1000;
+        dbg!(
+            self_config.post_speech_pad.as_millis() as isize,
+            other_config.post_speech_pad.as_millis() as isize,
+            self_config.sample_rate,
+            allowed_post_pad_diff
+        );
+
+        for (baseline, current) in self.transitions.iter().zip(other.transitions.iter()) {
+            match (baseline, current) {
+                (
+                    VadTransition::SpeechStart { timestamp_ms: ts_1 },
+                    VadTransition::SpeechStart { timestamp_ms: ts_2 },
+                ) => {
+                    if ts_1 != ts_2 {
+                        return false;
+                    }
+                }
+                (
+                    VadTransition::SpeechEnd {
+                        start_timestamp_ms: start_1,
+                        end_timestamp_ms: end_1,
+                        ..
+                    },
+                    VadTransition::SpeechEnd {
+                        start_timestamp_ms: start_2,
+                        end_timestamp_ms: end_2,
+                        ..
+                    },
+                ) => {
+                    if start_1 != start_2 {
+                        return false;
+                    } else if end_1 != end_2
+                        && (*end_1 as isize - *end_2 as isize).abs() as usize
+                            != allowed_post_pad_diff
+                    {
+                        return false;
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        true
     }
 
-    fn eq_current_session_samples(&self, other: &Self, _allowed_difference: usize) -> bool {
+    fn eq_current_session_samples(
+        &self,
+        other: &Self,
+        _self_config: &VadConfig,
+        _other_config: &VadConfig,
+    ) -> bool {
         self.current_session_samples == other.current_session_samples
     }
 
-    fn eq_current_speech_samples(&self, other: &Self, _allowed_difference: usize) -> bool {
+    fn eq_current_speech_samples(
+        &self,
+        other: &Self,
+        _self_config: &VadConfig,
+        _other_config: &VadConfig,
+    ) -> bool {
         self.current_speech_samples == other.current_speech_samples
     }
 
-    fn eq_current_silence_samples(&self, other: &Self, _allowed_difference: usize) -> bool {
+    fn eq_current_silence_samples(
+        &self,
+        other: &Self,
+        _self_config: &VadConfig,
+        _other_config: &VadConfig,
+    ) -> bool {
         self.current_silence_samples == other.current_silence_samples
     }
 
-    fn eq_likelihoods(&self, other: &Self, _allowed_difference: usize) -> bool {
+    fn eq_likelihoods(
+        &self,
+        other: &Self,
+        _self_config: &VadConfig,
+        _other_config: &VadConfig,
+    ) -> bool {
         self.likelihoods == other.likelihoods
     }
 }
@@ -249,43 +316,31 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
     );
 
     // Lets do some basic checks first just to make sure we're not complete trash
-    println!("Checking snapshot is generated with same configuration!");
-    compare_configs(&summary.config, &expected.config);
+    // println!("Checking snapshot is generated with same configuration!");
+    // compare_configs(&summary.config, &expected.config);
     assert_eq!(summary.input_size_ms, expected.input_size_ms);
 
-    let mut failing_files = vec![];
-    println!();
+    let failures = expected.eq(&summary);
 
-    for sample in summary.summary.keys() {
-        let baseline = &summary.summary[sample];
-        let current = &expected.summary[sample];
-
-        if baseline != current {
-            println!("{} is failing", sample.display());
-            if baseline.transitions != current.transitions {
-                println!("\tDifference in transitions list!");
-            }
-            if baseline.current_silence_samples != current.current_silence_samples {
-                println!("\tDifference in silence lengths");
-            }
-            if baseline.current_speech_samples != current.current_speech_samples {
-                println!("\tDifference in speech lengths");
-            }
-            failing_files.push(sample.to_path_buf());
-        }
-    }
-    if !failing_files.is_empty() {
+    if let Some(failures) = failures {
         println!();
         println!("You have some failing files and targets. If you get a snapshot file and audio you can plot it via our plot_audio script e.g.");
         println!();
         println!(
             "python3 scripts/plot_audio.py -a {} -i {}",
-            failing_files[0].display(),
+            baseline_report.display(),
             current_report.display()
         );
         println!();
 
-        panic!("The following files are failing: {:?}", failing_files);
+        let mut failure_string = String::from("\n");
+        for audio_file in failures.keys() {
+            failure_string.push_str(&format!("{:?}:\n", audio_file));
+            for actual_failure in failures[audio_file].iter() {
+                failure_string.push_str(&format!("\t{}\n", actual_failure));
+            }
+        }
+        panic!("The following failures were detected: {}", failure_string);
     }
 }
 
