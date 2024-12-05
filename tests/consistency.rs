@@ -137,6 +137,7 @@ fn should_include_unprocessed_when_is_speaking(audio: &Path, chunk_ms: usize) {
     }
 }
 
+#[inline]
 fn sample_nums_to_ms(sample_num: usize, config: &VadConfig) -> usize {
     ((1000 * sample_num) as f32 / config.sample_rate as f32) as usize
 }
