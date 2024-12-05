@@ -320,36 +320,18 @@ impl VadSession {
                             // padding should be added to speech_end_ms.
                             let speech_end_with_pad_ms =
                                 speech_end_ms + self.config.post_speech_pad.as_millis() as usize;
-                            // TODO: Just some quick double checks, remember to delete these before git merge.
-                            assert!(
-                                self.config.post_speech_pad.as_millis() as usize
-                                    <= self.silent_samples
-                            );
-                            assert!(
-                                self.duration_to_index(Duration::from_millis(
-                                    speech_end_with_pad_ms as u64
-                                ))
-                                .unwrap()
-                                    < self.session_audio.len()
-                            );
 
                             self.cached_active_speech =
                                 self.get_speech(start_ms, Some(speech_end_ms)).to_vec();
 
                             vad_change = Some(VadTransition::SpeechEnd {
                                 start_timestamp_ms: start_ms,
-                                samples: self.cached_active_speech.clone(),
                                 end_timestamp_ms: speech_end_with_pad_ms,
+                                samples: self.cached_active_speech.clone(),
                             });
 
                             // Need to delete the current speech samples from internal buffer to prevent OOM.
                             assert!(self.speech_start_ms.is_some());
-                            self.cached_active_speech = self
-                                .get_speech(start_ms, Some(speech_end_with_pad_ms))
-                                .to_vec();
-                            let speech_end_with_pad_idx = self.unchecked_duration_to_index(
-                                Duration::from_millis(speech_end_with_pad_ms as u64),
-                            );
                             let speech_end_idx = self.unchecked_duration_to_index(
                                 Duration::from_millis(speech_end_ms as u64),
                             );
