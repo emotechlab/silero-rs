@@ -875,7 +875,7 @@ mod tests {
         let step = if config.sample_rate == 16000 {
             1
         } else {
-            2 // Other sample rates are invalid so we'll just work on fewer data
+            2 // Other sample rates are invalid so we'll just work on less data
         };
         let samples: Vec<f32> = WavReader::open(&audio_file)
             .unwrap()
