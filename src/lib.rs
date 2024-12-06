@@ -608,11 +608,7 @@ impl VadConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Result;
     use hound::WavReader;
-    use serde::Deserialize;
-    use serde_json::Value;
-    use std::ffi::OsStr;
     use std::fs;
     use std::path::{Path, PathBuf};
     use tracing_test::traced_test;
@@ -732,7 +728,7 @@ mod tests {
     #[test]
     #[traced_test]
     fn taking_audio() {
-        let samples: Vec<f32> = hound::WavReader::open("tests/audio/sample_4.wav")
+        let samples: Vec<f32> = WavReader::open("tests/audio/sample_4.wav")
             .unwrap()
             .into_samples()
             .map(|x| {
@@ -843,7 +839,7 @@ mod tests {
     #[traced_test]
     fn trim_to_audio_start() {
         // the start of sample 1 is speech so we'll
-        let mut samples: Vec<f32> = hound::WavReader::open("tests/audio/sample_1.wav")
+        let mut samples: Vec<f32> = WavReader::open("tests/audio/sample_1.wav")
             .unwrap()
             .into_samples()
             .map(|x| {
@@ -875,11 +871,11 @@ mod tests {
         assert_eq!(start.as_millis() as usize, session.speech_start_ms.unwrap());
     }
 
-    fn get_audio_sample(audio_file: impl AsRef<Path>, config: &VadConfig) -> Result<Vec<f32>> {
+    fn get_audio_sample(audio_file: impl AsRef<Path>, config: &VadConfig) -> Vec<f32> {
         let step = if config.sample_rate == 16000 {
             1
         } else {
-            2 // Other sample rates are invalid so we'll just work on less data
+            2 // Other sample rates are invalid so we'll just work on fewer data
         };
         let samples: Vec<f32> = WavReader::open(&audio_file)
             .unwrap()
@@ -891,7 +887,7 @@ mod tests {
             })
             .collect();
 
-        Ok(samples)
+        samples
     }
 
     #[inline]
@@ -921,7 +917,7 @@ mod tests {
         let audio_files = get_audios();
         for audio_file in audio_files {
             let mut config = VadConfig::default();
-            let samples = get_audio_sample(&audio_file, &config).unwrap();
+            let samples = get_audio_sample(&audio_file, &config);
             assert!(!samples.is_empty());
 
             let chunk_size_ms = 50;
