@@ -22,6 +22,7 @@ pub struct VadConfig {
     pub positive_speech_threshold: f32,
     pub negative_speech_threshold: f32,
     pub pre_speech_pad: Duration,
+    pub post_speech_pad: Duration,
     pub redemption_time: Duration,
     pub sample_rate: usize,
     pub min_speech_time: Duration,
@@ -315,12 +316,18 @@ impl VadSession {
                                 - self.silent_samples)
                                 / (self.config.sample_rate / 1000);
 
-                            self.cached_active_speech =
-                                self.get_speech(start_ms, Some(speech_end_ms)).to_vec();
+                            // Since speech_end_ms does not include silent_samples, the post
+                            // padding should be added to speech_end_ms.
+                            let speech_end_with_pad_ms =
+                                speech_end_ms + self.config.post_speech_pad.as_millis() as usize;
+
+                            self.cached_active_speech = self
+                                .get_speech(start_ms, Some(speech_end_with_pad_ms))
+                                .to_vec();
 
                             vad_change = Some(VadTransition::SpeechEnd {
                                 start_timestamp_ms: start_ms,
-                                end_timestamp_ms: speech_end_ms,
+                                end_timestamp_ms: speech_end_with_pad_ms,
                                 samples: self.cached_active_speech.clone(),
                             });
 
@@ -545,6 +552,7 @@ impl Default for VadConfig {
             positive_speech_threshold: 0.5,
             negative_speech_threshold: 0.35,
             pre_speech_pad: Duration::from_millis(600),
+            post_speech_pad: Duration::from_millis(0),
             redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
             min_speech_time: Duration::from_millis(90),
@@ -557,6 +565,7 @@ impl VadConfig {
         positive_speech_threshold: f32,
         negative_speech_threshold: f32,
         pre_speech_pad: Duration,
+        post_speech_pad: Duration,
         redemption_time: Duration,
         sample_rate: usize,
         min_speech_time: Duration,
@@ -565,6 +574,7 @@ impl VadConfig {
             positive_speech_threshold,
             negative_speech_threshold,
             pre_speech_pad,
+            post_speech_pad,
             redemption_time,
             sample_rate,
             min_speech_time,
@@ -576,6 +586,10 @@ impl VadConfig {
     }
 
     pub fn validate_config(&self) -> Result<()> {
+        if self.post_speech_pad > self.redemption_time {
+            bail!("post speech pad cannot be longer than redemption time")
+        }
+
         #[cfg(feature = "audio_resampler")]
         return Ok(());
 
@@ -594,6 +608,9 @@ impl VadConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hound::WavReader;
+    use std::fs;
+    use std::path::{Path, PathBuf};
     use tracing_test::traced_test;
 
     /// Feed only silence into the network and ensure that `get_current_speech` returns an empty
@@ -606,7 +623,7 @@ mod tests {
 
         session.process(&short_audio).unwrap();
 
-        assert_eq!(session.get_current_speech(), &[]);
+        assert!(session.get_current_speech().is_empty());
     }
 
     /// Basic smoke test that the model loads correctly and we haven't committed rubbish to the
@@ -711,7 +728,7 @@ mod tests {
     #[test]
     #[traced_test]
     fn taking_audio() {
-        let samples: Vec<f32> = hound::WavReader::open("tests/audio/sample_4.wav")
+        let samples: Vec<f32> = WavReader::open("tests/audio/sample_4.wav")
             .unwrap()
             .into_samples()
             .map(|x| {
@@ -822,7 +839,7 @@ mod tests {
     #[traced_test]
     fn trim_to_audio_start() {
         // the start of sample 1 is speech so we'll
-        let mut samples: Vec<f32> = hound::WavReader::open("tests/audio/sample_1.wav")
+        let mut samples: Vec<f32> = WavReader::open("tests/audio/sample_1.wav")
             .unwrap()
             .into_samples()
             .map(|x| {
@@ -852,5 +869,123 @@ mod tests {
         let (start, _end) = session.current_buffer_range();
 
         assert_eq!(start.as_millis() as usize, session.speech_start_ms.unwrap());
+    }
+
+    fn get_audio_sample(audio_file: impl AsRef<Path>, config: &VadConfig) -> Vec<f32> {
+        let step = if config.sample_rate == 16000 {
+            1
+        } else {
+            2 // Other sample rates are invalid so we'll just work on less data
+        };
+        let samples: Vec<f32> = WavReader::open(&audio_file)
+            .unwrap()
+            .into_samples()
+            .step_by(step)
+            .map(|x| {
+                let modified = x.unwrap_or(0i16) as f32 / (i16::MAX as f32);
+                modified.clamp(-1.0, 1.0)
+            })
+            .collect();
+
+        samples
+    }
+
+    #[inline]
+    fn get_chunk_size(sample_rate: usize, chunk_ms: usize) -> usize {
+        (sample_rate * chunk_ms) / 1000
+    }
+
+    fn get_audios() -> Vec<PathBuf> {
+        let audio_dir = Path::new("tests/audio");
+        let mut result = vec![];
+        for entry in fs::read_dir(&audio_dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if !path.is_dir() {
+                result.push(path.to_path_buf());
+            }
+        }
+        assert!(!result.is_empty());
+        result
+    }
+
+    /// post_speech_pad should result to an increase in the number of samples that SpeechEnd
+    /// transition contains.
+    #[test]
+    #[traced_test]
+    fn post_speech_pad() {
+        let audio_files = get_audios();
+        for audio_file in audio_files {
+            let mut config = VadConfig::default();
+            let samples = get_audio_sample(&audio_file, &config);
+            assert!(!samples.is_empty());
+
+            let chunk_size_ms = 50;
+            let chunk_size = get_chunk_size(config.sample_rate, chunk_size_ms);
+
+            // Do inference with post_speech_pad = 0, a.k.a the default.
+            let mut vad = VadSession::new(config).unwrap();
+            let baseline = do_vad_inference(&samples, chunk_size, &mut vad);
+
+            // Now, do inference with post_speech_pad, and compare it with the baseline.
+            for post_speech_pad in (50..config.redemption_time.as_millis() as usize + 1).step_by(50)
+            {
+                config.post_speech_pad = Duration::from_millis(post_speech_pad as u64);
+                let mut vad = VadSession::new(config).unwrap();
+                let current = do_vad_inference(&samples, chunk_size, &mut vad);
+                assert_eq!(baseline.len(), current.len());
+                for (b, c) in baseline.iter().zip(current.iter()) {
+                    match (b, c) {
+                        (
+                            VadTransition::SpeechEnd {
+                                start_timestamp_ms: start1,
+                                end_timestamp_ms: end1,
+                                samples: samples1,
+                            },
+                            VadTransition::SpeechEnd {
+                                start_timestamp_ms: start2,
+                                end_timestamp_ms: end2,
+                                samples: samples2,
+                            },
+                        ) => {
+                            assert_eq!(start1, start2);
+                            assert_eq!(*end1, *end2 - post_speech_pad);
+                            assert_eq!(
+                                samples1.len(),
+                                samples2.len() - config.sample_rate * post_speech_pad / 1000
+                            );
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get all SpeechEnd variant of [VadTransition] from the given file.
+    fn do_vad_inference(
+        samples: &Vec<f32>,
+        chunk_size: usize,
+        vad: &mut VadSession,
+    ) -> Vec<VadTransition> {
+        let num_chunks = samples.len() / chunk_size;
+        let mut speech_ends = vec![];
+        for i in 0..num_chunks {
+            let start = i * chunk_size;
+            let end = if i < num_chunks - 1 {
+                start + chunk_size
+            } else {
+                samples.len()
+            };
+
+            let mut transitions = vad.process(&samples[start..end]).unwrap();
+            for transition in transitions.drain(..) {
+                if let VadTransition::SpeechEnd { .. } = transition {
+                    speech_ends.push(transition);
+                }
+            }
+        }
+
+        speech_ends
     }
 }
