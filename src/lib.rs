@@ -321,8 +321,9 @@ impl VadSession {
                             let speech_end_with_pad_ms =
                                 speech_end_ms + self.config.post_speech_pad.as_millis() as usize;
 
-                            self.cached_active_speech =
-                                self.get_speech(start_ms, Some(speech_end_ms)).to_vec();
+                            self.cached_active_speech = self
+                                .get_speech(start_ms, Some(speech_end_with_pad_ms))
+                                .to_vec();
 
                             vad_change = Some(VadTransition::SpeechEnd {
                                 start_timestamp_ms: start_ms,
@@ -898,51 +899,68 @@ mod tests {
         (sample_rate * chunk_ms) / 1000
     }
 
+    fn get_audios() -> Vec<PathBuf> {
+        let audio_dir = Path::new("tests/audio");
+        let mut result = vec![];
+        for entry in fs::read_dir(&audio_dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if !path.is_dir() {
+                result.push(path.to_path_buf());
+            }
+        }
+        assert!(!result.is_empty());
+        result
+    }
+
     /// post_speech_pad should result to an increase in the number of samples that SpeechEnd
     /// transition contains.
     #[test]
     #[traced_test]
     fn post_speech_pad() {
-        let mut config = VadConfig::default();
-        let audio_file = "tests/audio/sample_1.wav";
-        let samples = get_audio_sample(&audio_file, &config).unwrap();
-        assert!(!samples.is_empty());
+        let audio_files = get_audios();
+        for audio_file in audio_files {
+            let mut config = VadConfig::default();
+            let samples = get_audio_sample(&audio_file, &config).unwrap();
+            assert!(!samples.is_empty());
 
-        let chunk_size_ms = 50;
-        let chunk_size = get_chunk_size(config.sample_rate, chunk_size_ms);
-        let num_chunks = samples.len() / chunk_size;
+            let chunk_size_ms = 50;
+            let chunk_size = get_chunk_size(config.sample_rate, chunk_size_ms);
 
-        // Do inference with post_speech_pad = 0, a.k.a the default.
-        let mut vad = VadSession::new(config).unwrap();
-        let baseline = do_vad_inference(&samples, chunk_size, &mut vad);
-
-        // Now, do inference with post_speech_pad, and compare it with the baseline.
-        for post_speech_pad in (50..config.redemption_time.as_millis() as usize + 1).step_by(50) {
-            config.post_speech_pad = Duration::from_millis(post_speech_pad as u64);
+            // Do inference with post_speech_pad = 0, a.k.a the default.
             let mut vad = VadSession::new(config).unwrap();
-            let current = do_vad_inference(&samples, chunk_size, &mut vad);
+            let baseline = do_vad_inference(&samples, chunk_size, &mut vad);
 
-            assert_eq!(baseline.len(), current.len());
-            for (b, c) in baseline.iter().zip(current.iter()) {
-                match (b, c) {
-                    (
-                        VadTransition::SpeechEnd {
-                            start_timestamp_ms: start1,
-                            end_timestamp_ms: end1,
-                            samples: samples1,
-                        },
-                        VadTransition::SpeechEnd {
-                            start_timestamp_ms: start2,
-                            end_timestamp_ms: end2,
-                            samples: samples2,
-                        },
-                    ) => {
-                        assert_eq!(start1, start2);
-                        assert_eq!(*end1, *end2 - post_speech_pad);
-                        // assert_eq!(samples1.len(), samples2.len() - config.sample_rate * post_speech_pad / 1000);
-                        assert_eq!(samples1.len(), samples2.len());
+            // Now, do inference with post_speech_pad, and compare it with the baseline.
+            for post_speech_pad in (50..config.redemption_time.as_millis() as usize + 1).step_by(50)
+            {
+                config.post_speech_pad = Duration::from_millis(post_speech_pad as u64);
+                let mut vad = VadSession::new(config).unwrap();
+                let current = do_vad_inference(&samples, chunk_size, &mut vad);
+                assert_eq!(baseline.len(), current.len());
+                for (b, c) in baseline.iter().zip(current.iter()) {
+                    match (b, c) {
+                        (
+                            VadTransition::SpeechEnd {
+                                start_timestamp_ms: start1,
+                                end_timestamp_ms: end1,
+                                samples: samples1,
+                            },
+                            VadTransition::SpeechEnd {
+                                start_timestamp_ms: start2,
+                                end_timestamp_ms: end2,
+                                samples: samples2,
+                            },
+                        ) => {
+                            assert_eq!(start1, start2);
+                            assert_eq!(*end1, *end2 - post_speech_pad);
+                            assert_eq!(
+                                samples1.len(),
+                                samples2.len() - config.sample_rate * post_speech_pad / 1000
+                            );
+                        }
+                        _ => unreachable!(),
                     }
-                    _ => unreachable!(),
                 }
             }
         }
