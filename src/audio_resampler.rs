@@ -27,8 +27,8 @@ pub fn resample_pcm(
     )?;
 
     let waves_in = vec![pcm_data];
-    let waves_out = resampler.process(&waves_in, None)?;
-    Ok(waves_out[0].clone())
+    let mut waves_out = resampler.process(&waves_in, None)?;
+    Ok(waves_out.remove(0))
 }
 
 #[cfg(test)]
