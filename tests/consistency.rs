@@ -43,7 +43,12 @@ fn compare_birds() {
 #[traced_test]
 fn include_unprocessed_audio_1() {
     let audio = Path::new("tests/audio/sample_1.wav");
-    for chunk_ms in [20, 30, 50] {
+    // Use prime number as chunk duration so we are more confident that the code indeed works. We also test common
+    // practical choices: 20, 30, 50.
+    for chunk_ms in [
+        2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
+        97, 20, 30, 50,
+    ] {
         should_include_unprocessed_when_is_speaking(audio, chunk_ms);
     }
 }
@@ -52,7 +57,10 @@ fn include_unprocessed_audio_1() {
 #[traced_test]
 fn include_unprocessed_audio_2() {
     let audio = Path::new("tests/audio/sample_2.wav");
-    for chunk_ms in [20, 30, 50] {
+    for chunk_ms in [
+        2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
+        97, 20, 30, 50,
+    ] {
         should_include_unprocessed_when_is_speaking(audio, chunk_ms);
     }
 }
@@ -61,7 +69,10 @@ fn include_unprocessed_audio_2() {
 #[traced_test]
 fn include_unprocessed_audio_3() {
     let audio = Path::new("tests/audio/sample_3.wav");
-    for chunk_ms in [20, 30, 50] {
+    for chunk_ms in [
+        2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
+        97, 20, 30, 50,
+    ] {
         should_include_unprocessed_when_is_speaking(audio, chunk_ms);
     }
 }
@@ -78,6 +89,8 @@ fn include_unprocessed_audio_4() {
 /// When is_speaking is true, get_current_speech should return everything starting from
 /// speech start time until the very end, including the unprocessed samples.
 fn should_include_unprocessed_when_is_speaking(audio: &Path, chunk_ms: usize) {
+    let mut test_executed = false;
+
     let config = VadConfig::default();
     let mut vad = VadSession::new(config).unwrap();
 
@@ -119,6 +132,7 @@ fn should_include_unprocessed_when_is_speaking(audio: &Path, chunk_ms: usize) {
 
         // The actual test logic.
         if vad.is_speaking() {
+            test_executed = true;
             let current_speech = vad.get_current_speech();
             let total_time_send_to_vad = sample_nums_to_ms(end, &config);
             let current_speech_end_time =
@@ -126,6 +140,7 @@ fn should_include_unprocessed_when_is_speaking(audio: &Path, chunk_ms: usize) {
             assert_eq!(total_time_send_to_vad, current_speech_end_time);
         }
     }
+    assert!(test_executed);
 }
 
 #[inline]
