@@ -536,6 +536,16 @@ impl VadSession {
     pub fn session_audio_samples(&self) -> usize {
         self.session_audio.len()
     }
+
+    #[doc(hidden)]
+    pub fn current_unprocessed_samples(&self) -> usize {
+        dbg!(
+            self.session_audio.len(),
+            self.deleted_samples,
+            self.processed_samples
+        );
+        self.session_audio.len() + self.deleted_samples - self.processed_samples
+    }
 }
 
 impl Default for VadConfig {

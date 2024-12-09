@@ -81,7 +81,10 @@ fn include_unprocessed_audio_3() {
 #[traced_test]
 fn include_unprocessed_audio_4() {
     let audio = Path::new("tests/audio/sample_4.wav");
-    for chunk_ms in [20, 30, 50] {
+    for chunk_ms in [
+        2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
+        97, 20, 30, 50,
+    ] {
         should_include_unprocessed_when_is_speaking(audio, chunk_ms);
     }
 }
@@ -138,6 +141,7 @@ fn should_include_unprocessed_when_is_speaking(audio: &Path, chunk_ms: usize) {
             let current_speech_end_time =
                 last_speech_start_ms + sample_nums_to_ms(current_speech.len(), &config);
             assert_eq!(total_time_send_to_vad, current_speech_end_time);
+            assert!(vad.current_unprocessed_samples() > 0);
         }
     }
     assert!(test_executed);
