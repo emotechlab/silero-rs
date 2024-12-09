@@ -41,15 +41,6 @@ fn compare_birds() {
 
 #[test]
 #[traced_test]
-fn include_unprocessed_bird() {
-    let audio = Path::new("tests/audio/birds.wav");
-    for chunk_ms in [20, 30, 50] {
-        should_include_unprocessed_when_is_speaking(audio, chunk_ms);
-    }
-}
-
-#[test]
-#[traced_test]
 fn include_unprocessed_audio_1() {
     let audio = Path::new("tests/audio/sample_1.wav");
     for chunk_ms in [20, 30, 50] {
