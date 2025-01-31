@@ -26,7 +26,7 @@ approx = "0.5.1"
 divan = "0.1.15"
 hound = "3.5.1"
 serde_json = "1.0.125"
-tracing-test = { version = "0.2.5", features = ["no-env-filter"] }
+tracing-test = "0.2.5"
 
 [[bench]]
 name = "usage"

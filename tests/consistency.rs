@@ -46,6 +46,14 @@ fn compare_audio(audio: &Path) {
 
     let chunks_30ms = silero_streaming(audio, 30, config.clone());
     assert_eq!(whole_file, chunks_30ms);
+
+    // 20ms initial remainder
+    let chunks_100ms = silero_streaming(audio, 100, config.clone());
+    assert_eq!(whole_file, chunks_100ms);
+
+    // 1ms initial remainder
+    let chunks_35ms = silero_streaming(audio, 31, config.clone());
+    assert_eq!(whole_file, chunks_35ms);
 }
 
 #[derive(Clone, PartialEq, Eq)]
