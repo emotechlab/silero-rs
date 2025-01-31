@@ -18,6 +18,7 @@ code
 ### Fixed
 - Potential OOM when handling long autio.
 - Incorrect segments when processing whole files
+- Made output deterministic by not eagerly processing frame remainders (silent padding may cause issues)
 
 ### Changed
 - Deleted `timestamp_ms` in `SpeechEnd`.
