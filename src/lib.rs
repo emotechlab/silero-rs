@@ -195,12 +195,10 @@ impl VadSession {
         let mut transitions = vec![];
 
         for _ in 0..num_chunks {
-            // we might not be getting audio chunks in perfect multiples of 30ms, so let the
-            // last frame accommodate the remainder. This adds a bit of non-determinism based on
-            // audio size but it does let us more eagerly process audio.
-            //
-            // processed_samples is updated in process_internal so always points to the index of
-            // the next sample to go from.
+            // We have removed non-determinism by only keeping to 30ms frames, but this means any
+            // remainder at the end of the audio will never be processed. This is fine because 
+            // we don't expect to get useful speech in <30ms and if it's at the end and it's
+            // speaking we don't lose anything by keeping an extra silence <30ms at the end.
             let sample_range = (self.processed_samples - self.deleted_samples)
                 ..(self.processed_samples + vad_segment_length - self.deleted_samples);
             let vad_result = self.process_internal(sample_range)?;
