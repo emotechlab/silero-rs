@@ -196,7 +196,7 @@ impl VadSession {
 
         for _ in 0..num_chunks {
             // We have removed non-determinism by only keeping to 30ms frames, but this means any
-            // remainder at the end of the audio will never be processed. This is fine because 
+            // remainder at the end of the audio will never be processed. This is fine because
             // we don't expect to get useful speech in <30ms and if it's at the end and it's
             // speaking we don't lose anything by keeping an extra silence <30ms at the end.
             let sample_range = (self.processed_samples - self.deleted_samples)
