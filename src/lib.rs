@@ -5,6 +5,7 @@ pub use crate::errors::VadError;
 use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::session::{builder::GraphOptimizationLevel, Session};
+use std::fmt;
 use std::ops::Range;
 use std::path::Path;
 use std::time::Duration;
@@ -30,7 +31,6 @@ pub struct VadConfig {
 
 /// A VAD session create one of these for each audio stream you want to detect voice activity on
 /// and feed the audio into it.
-#[derive(Debug)]
 pub struct VadSession {
     config: VadConfig,
     model: Session, // TODO: would this be safe to share? does the runtime graph hold any state?
@@ -48,6 +48,25 @@ pub struct VadSession {
 
     /// Cached current active samples
     cached_active_speech: Vec<f32>,
+}
+
+impl fmt::Debug for VadSession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VadSession")
+            .field("config", &self.config)
+            .field("model", &self.model)
+            .field("state", &self.state)
+            .field("session_audio::len", &self.session_audio.len())
+            .field(
+                "cached_active_speech::len",
+                &self.cached_active_speech.len(),
+            )
+            .field("processed_samples", &self.processed_samples)
+            .field("deleted_samples", &self.deleted_samples)
+            .field("silent_samples", &self.silent_samples)
+            .field("speech_start_ms", &self.speech_start_ms)
+            .finish()
+    }
 }
 
 /// Current state of the VAD (speaking or silent)
