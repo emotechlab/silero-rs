@@ -3,7 +3,7 @@
 pub use crate::audio_resampler::resample_pcm;
 pub use crate::errors::VadError;
 use anyhow::{bail, Context, Result};
-use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
+use ndarray::{s, Array, Array2, ArrayBase, ArrayD, Ix1, OwnedRepr};
 use ort::session::{builder::GraphOptimizationLevel, Session};
 use std::fmt;
 use std::ops::Range;
@@ -34,8 +34,7 @@ pub struct VadConfig {
 pub struct VadSession {
     config: VadConfig,
     model: Session, // TODO: would this be safe to share? does the runtime graph hold any state?
-    h_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
-    c_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
+    state_tensor: ArrayD<f32>,
     sample_rate_tensor: ArrayBase<OwnedRepr<i64>, Ix1>,
     state: VadState,
     session_audio: Vec<f32>,
@@ -142,15 +141,15 @@ impl VadSession {
             .with_optimization_level(GraphOptimizationLevel::Level3)?
             .with_intra_threads(4)?
             .commit_from_memory(model_bytes)?;
-        let h_tensor = Array3::<f32>::zeros((2, 1, 64));
-        let c_tensor = Array3::<f32>::zeros((2, 1, 64));
-        let sample_rate_tensor = Array1::from_vec(vec![config.sample_rate as i64]);
+
+        let state_tensor = ArrayD::<f32>::zeros([2, 1, 128].as_slice());
+        let sample_rate_tensor =
+            Array::from_shape_vec([1], vec![config.sample_rate as i64]).unwrap();
 
         Ok(Self {
             config,
             model,
-            h_tensor,
-            c_tensor,
+            state_tensor,
             sample_rate_tensor,
             state: VadState::Silence,
             session_audio: vec![],
@@ -234,33 +233,24 @@ impl VadSession {
 
     pub fn forward(&mut self, input: Vec<f32>) -> Result<ort::value::Value> {
         let samples = input.len();
-        let audio_tensor = Array2::from_shape_vec((1, samples), input)?;
-        let mut result = self.model.run(ort::inputs![
-            audio_tensor.view(),
-            self.sample_rate_tensor.view(),
-            self.h_tensor.view(),
-            self.c_tensor.view()
-        ]?)?;
+        let mut audio_tensor = Array2::from_shape_vec((1, samples), input)?;
+        audio_tensor = match self.config.sample_rate {
+            16000 => audio_tensor.slice(s![.., ..480.min(samples)]).to_owned(),
+            8000 => audio_tensor.slice(s![.., ..240.min(samples)]).to_owned(),
+            _ => unreachable!(),
+        };
 
-        // Update internal state tensors.
-        self.h_tensor = result
-            .get("hn")
-            .unwrap()
-            .try_extract_tensor::<f32>()?
-            .to_owned()
-            .into_shape_with_order((2, 1, 64))
-            .context("Shape mismatch for h_tensor")?;
+        let inputs = ort::inputs![
+            audio_tensor,
+            std::mem::take(&mut self.state_tensor),
+            self.sample_rate_tensor.clone(),
+        ]?;
+        let mut result = self.model.run(inputs)?;
 
-        self.c_tensor = result
-            .get("cn")
-            .unwrap()
-            .try_extract_tensor::<f32>()?
-            .to_owned()
-            .into_shape_with_order((2, 1, 64))
-            .context("Shape mismatch for h_tensor")?;
+        self.state_tensor = result["stateN"].try_extract_tensor().unwrap().to_owned();
 
-        let prob_tensor = result.remove("output").unwrap();
-        Ok(prob_tensor)
+        let prob = result.remove("output").unwrap();
+        Ok(prob)
     }
 
     /// Advance the VAD state machine with an audio frame. Keep between 30-96ms in length.
@@ -517,8 +507,7 @@ impl VadSession {
     /// Reset the status of the model
     // TODO should this reset the audio buffer as well?
     pub fn reset(&mut self) {
-        self.h_tensor = Array3::<f32>::zeros((2, 1, 64));
-        self.c_tensor = Array3::<f32>::zeros((2, 1, 64));
+        self.state_tensor = ArrayD::<f32>::zeros([2, 1, 128].as_slice());
         self.speech_start_ms = None;
         self.silent_samples = 0;
         self.state = VadState::Silence;
