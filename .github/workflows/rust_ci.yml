@@ -16,10 +16,6 @@ jobs:
           lfs: true
           submodules: recursive
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      - name: Clean env
-        run: |
-          cargo clean
-          rm -rf target
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt clippy
