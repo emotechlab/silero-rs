@@ -35,7 +35,7 @@ struct Report {
     current_session_samples: Vec<usize>,
     current_silence_samples: Vec<usize>,
     current_speech_samples: Vec<usize>,
-    likelihoods: Vec<usize>,
+    likelihoods: Vec<f32>,
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
                     .first()
                     .unwrap()
                     * 100.0;
-                report.likelihoods.push(prob as usize);
+                report.likelihoods.push(prob);
                 // Try and solve the too small inference issue
                 last_end = end;
             }
