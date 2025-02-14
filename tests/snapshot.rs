@@ -29,13 +29,37 @@ struct Summary {
     summary: BTreeMap<PathBuf, Report>,
 }
 
-#[derive(Default, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Default, Debug, Deserialize, Serialize)]
 struct Report {
     transitions: Vec<VadTransition>,
     current_session_samples: Vec<usize>,
     current_silence_samples: Vec<usize>,
     current_speech_samples: Vec<usize>,
-    likelihoods: Vec<usize>,
+    likelihoods: Vec<f32>,
+}
+
+impl PartialEq for Report {
+    fn eq(&self, other: &Self) -> bool {
+        if self.transitions != other.transitions {
+            return false;
+        }
+        if self.current_session_samples != other.current_session_samples {
+            return false;
+        }
+        if self.current_speech_samples != other.current_speech_samples {
+            return false;
+        }
+        if self.current_speech_samples != other.current_speech_samples {
+            return false;
+        }
+        for (likelihood1, likelihood2) in self.likelihoods.iter().zip(other.likelihoods.iter()) {
+            let abs_diff = (likelihood1 - likelihood2).abs();
+            if abs_diff >= 0.01 {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 #[test]
@@ -134,7 +158,7 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
                     .first()
                     .unwrap()
                     * 100.0;
-                report.likelihoods.push(prob as usize);
+                report.likelihoods.push(prob);
                 // Try and solve the too small inference issue
                 last_end = end;
             }
