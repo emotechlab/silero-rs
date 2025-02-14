@@ -22,12 +22,7 @@ jobs:
       - name: Rustfmt
         run: cargo fmt --check
       - name: Cargo test
-        run: |
-          cargo test --all-features | true
-          echo "Below is the generated"
-          cat target/chunk_30_8000Hz_default.json
-          echo "Below is the snapshot"
-          cat tests/data/chunk_30_8000Hz_default.json
+        run: cargo test --all-features
       - uses: taiki-e/install-action@cargo-hack
       - name: Cargo build
         run: |
