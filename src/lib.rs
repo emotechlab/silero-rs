@@ -27,6 +27,7 @@ pub struct VadConfig {
     pub redemption_time: Duration,
     pub sample_rate: usize,
     pub min_speech_time: Duration,
+    pub noise_gate: f32,
 }
 
 /// A VAD session create one of these for each audio stream you want to detect voice activity on
@@ -273,9 +274,14 @@ impl VadSession {
         let samples = audio_frame.len();
         let frame_duration = self.samples_to_duration(samples);
 
+        // We still want to run inference to keep internal state correct
+        let suppress_confidence = audio_frame.iter().all(|x| x.abs() < self.config.noise_gate);
         let result = self.forward(audio_frame)?;
-
-        let prob = *result.try_extract_tensor::<f32>().unwrap().first().unwrap();
+        let prob = if suppress_confidence {
+            0.0
+        } else {
+            *result.try_extract_tensor::<f32>().unwrap().first().unwrap()
+        };
 
         let mut vad_change = None;
 
@@ -567,6 +573,7 @@ impl Default for VadConfig {
             // https://github.com/ricky0123/vad/blob/ea584aaf66d9162fb19d9bfba607e264452980c3/packages/_common/src/frame-processor.ts#L52
             positive_speech_threshold: 0.5,
             negative_speech_threshold: 0.35,
+            noise_gate: 0.1,
             pre_speech_pad: Duration::from_millis(600),
             post_speech_pad: Duration::from_millis(0),
             redemption_time: Duration::from_millis(600),
@@ -585,6 +592,7 @@ impl VadConfig {
         redemption_time: Duration,
         sample_rate: usize,
         min_speech_time: Duration,
+        noise_gate: f32,
     ) -> Result<Self> {
         let config = VadConfig {
             positive_speech_threshold,
@@ -594,6 +602,7 @@ impl VadConfig {
             redemption_time,
             sample_rate,
             min_speech_time,
+            noise_gate,
         };
         match config.validate_config() {
             Ok(_) => Ok(config),
@@ -661,7 +670,7 @@ mod tests {
     fn short_audio_handling() {
         let mut session = VadSession::new(VadConfig::default()).unwrap();
 
-        let short_audio = vec![0.0; 160];
+        let short_audio = vec![1.0; 160];
 
         session.session_audio = short_audio.clone();
         assert!(session.process_internal(0..160).is_err());
