@@ -549,7 +549,8 @@ impl VadSession {
         )
     }
 
-    /// Returns the current mutated vad config
+    /// Returns a mutable reference to the VadConfig.
+    /// Changes to this will take effect on the next inference, and won't modify past state
     pub fn config_mut(&mut self) -> &mut VadConfig {
         &mut self.config
     }
