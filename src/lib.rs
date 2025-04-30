@@ -549,6 +549,11 @@ impl VadSession {
         )
     }
 
+    /// Returns the current mutated vad config
+    pub fn config_mut(&mut self) -> &mut VadConfig {
+        &mut self.config
+    }
+
     #[inline(always)]
     fn samples_to_duration(&self, samples: usize) -> Duration {
         Duration::from_secs_f64(samples as f64 / self.config.sample_rate as f64)
