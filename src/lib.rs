@@ -549,6 +549,12 @@ impl VadSession {
         )
     }
 
+    /// Returns a mutable reference to the VadConfig.
+    /// Changes to this will take effect on the next inference, and won't modify past state
+    pub fn config_mut(&mut self) -> &mut VadConfig {
+        &mut self.config
+    }
+
     #[inline(always)]
     fn samples_to_duration(&self, samples: usize) -> Duration {
         Duration::from_secs_f64(samples as f64 / self.config.sample_rate as f64)
