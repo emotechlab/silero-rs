@@ -984,6 +984,75 @@ mod tests {
         }
     }
 
+    /// If we change a config during runtime we should see that change reflected in subsequence
+    /// segments
+    #[test]
+    #[traced_test]
+    fn change_config() {
+        // the start of sample 1 is speech so we'll
+        let mut samples: Vec<f32> = WavReader::open("tests/audio/sample_1.wav")
+            .unwrap()
+            .into_samples()
+            .map(|x| {
+                let modified = x.unwrap_or(0i16) as f32 / (i16::MAX as f32);
+                modified.clamp(-1.0, 1.0)
+            })
+            .collect();
+
+        // Keep only the first second
+        samples.resize(16000, 0.0);
+        // Add 4 seconds silence
+        samples.resize(16000 * 5, 0.0);
+
+        let mut config = VadConfig::default();
+        config.pre_speech_pad = Duration::from_millis(0);
+        config.post_speech_pad = Duration::from_millis(500);
+        let mut session = VadSession::new(config.clone()).unwrap();
+
+        let transitions = do_vad_inference(&samples, 8000, &mut session);
+
+        // I only expect one segment of speech!
+        assert_eq!(transitions.len(), 1);
+
+        let config = session.config_mut();
+        config.post_speech_pad = Duration::from_millis(600);
+        //  config.redemption_time = Duration::from_millis(600);
+
+        let transitions_2 = do_vad_inference(&samples, 8000, &mut session);
+
+        // I only expect one segment of speech!
+        assert_eq!(transitions_2.len(), 1);
+
+        let duration = if let VadTransition::SpeechEnd {
+            start_timestamp_ms,
+            end_timestamp_ms,
+            ..
+        } = transitions[0]
+        {
+            end_timestamp_ms - start_timestamp_ms
+        } else {
+            panic!("Expected the last transition in `transitions` to be a speech end");
+        };
+
+        let duration_2 = if let VadTransition::SpeechEnd {
+            start_timestamp_ms,
+            end_timestamp_ms,
+            ..
+        } = transitions_2[0]
+        {
+            end_timestamp_ms - start_timestamp_ms
+        } else {
+            panic!("Expected the last transition in `transitions_2` to be a speech end");
+        };
+
+        println!(
+            "With padding of 500ms we have {}ms. Padding of 600ms we have {}ms",
+            duration, duration_2
+        );
+
+        assert_eq!(duration + 100, duration_2);
+    }
+
     /// Get all SpeechEnd variant of [VadTransition] from the given file.
     fn do_vad_inference(
         samples: &Vec<f32>,
