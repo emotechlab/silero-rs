@@ -129,7 +129,7 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
 
             if let Ok(network_outputs) = session.forward(samples[last_end..end].to_vec()) {
                 let prob = *network_outputs
-                    .try_extract_tensor::<f32>()
+                    .try_extract_array::<f32>()
                     .unwrap()
                     .first()
                     .unwrap()

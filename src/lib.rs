@@ -5,6 +5,7 @@ pub use crate::errors::VadError;
 use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::session::{builder::GraphOptimizationLevel, Session};
+use ort::value::TensorRef;
 use std::fmt;
 use std::ops::Range;
 use std::path::Path;
@@ -236,17 +237,17 @@ impl VadSession {
         let samples = input.len();
         let audio_tensor = Array2::from_shape_vec((1, samples), input)?;
         let mut result = self.model.run(ort::inputs![
-            audio_tensor.view(),
-            self.sample_rate_tensor.view(),
-            self.h_tensor.view(),
-            self.c_tensor.view()
-        ]?)?;
+            TensorRef::from_array_view(audio_tensor.view())?,
+            TensorRef::from_array_view(self.sample_rate_tensor.view())?,
+            TensorRef::from_array_view(self.h_tensor.view())?,
+            TensorRef::from_array_view(self.c_tensor.view())?
+        ])?;
 
         // Update internal state tensors.
         self.h_tensor = result
             .get("hn")
             .unwrap()
-            .try_extract_tensor::<f32>()?
+            .try_extract_array::<f32>()?
             .to_owned()
             .into_shape_with_order((2, 1, 64))
             .context("Shape mismatch for h_tensor")?;
@@ -254,7 +255,7 @@ impl VadSession {
         self.c_tensor = result
             .get("cn")
             .unwrap()
-            .try_extract_tensor::<f32>()?
+            .try_extract_array::<f32>()?
             .to_owned()
             .into_shape_with_order((2, 1, 64))
             .context("Shape mismatch for h_tensor")?;
@@ -275,7 +276,7 @@ impl VadSession {
 
         let result = self.forward(audio_frame)?;
 
-        let prob = *result.try_extract_tensor::<f32>().unwrap().first().unwrap();
+        let prob = *result.try_extract_array::<f32>().unwrap().first().unwrap();
 
         let mut vad_change = None;
 
