@@ -5,6 +5,7 @@ pub use crate::errors::VadError;
 use anyhow::{bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::session::{builder::GraphOptimizationLevel, Session};
+use ort::value::TensorRef;
 use std::fmt;
 use std::ops::Range;
 use std::path::Path;
@@ -236,17 +237,17 @@ impl VadSession {
         let samples = input.len();
         let audio_tensor = Array2::from_shape_vec((1, samples), input)?;
         let mut result = self.model.run(ort::inputs![
-            audio_tensor.view(),
-            self.sample_rate_tensor.view(),
-            self.h_tensor.view(),
-            self.c_tensor.view()
-        ]?)?;
+            TensorRef::from_array_view(audio_tensor.view())?,
+            TensorRef::from_array_view(self.sample_rate_tensor.view())?,
+            TensorRef::from_array_view(self.h_tensor.view())?,
+            TensorRef::from_array_view(self.c_tensor.view())?
+        ])?;
 
         // Update internal state tensors.
         self.h_tensor = result
             .get("hn")
             .unwrap()
-            .try_extract_tensor::<f32>()?
+            .try_extract_array::<f32>()?
             .to_owned()
             .into_shape_with_order((2, 1, 64))
             .context("Shape mismatch for h_tensor")?;
@@ -254,7 +255,7 @@ impl VadSession {
         self.c_tensor = result
             .get("cn")
             .unwrap()
-            .try_extract_tensor::<f32>()?
+            .try_extract_array::<f32>()?
             .to_owned()
             .into_shape_with_order((2, 1, 64))
             .context("Shape mismatch for h_tensor")?;
@@ -275,7 +276,7 @@ impl VadSession {
 
         let result = self.forward(audio_frame)?;
 
-        let prob = *result.try_extract_tensor::<f32>().unwrap().first().unwrap();
+        let prob = *result.try_extract_array::<f32>().unwrap().first().unwrap();
 
         let mut vad_change = None;
 
@@ -608,21 +609,30 @@ impl VadConfig {
     }
 
     pub fn validate_config(&self) -> Result<()> {
+        #[cfg(feature = "audio_resampler")]
+        const HAS_RESAMPLER: bool = true;
+        #[cfg(not(feature = "audio_resampler"))]
+        const HAS_RESAMPLER: bool = false;
+
+        self.validate_config_internal(HAS_RESAMPLER)
+    }
+
+    fn validate_config_internal(&self, has_resampler: bool) -> Result<()> {
         if self.post_speech_pad > self.redemption_time {
             bail!("post speech pad cannot be longer than redemption time")
         }
 
-        #[cfg(feature = "audio_resampler")]
-        return Ok(());
-
-        #[cfg(not(feature = "audio_resampler"))]
-        if ![8000, 16000].contains(&self.sample_rate) {
-            bail!(
-                "Invalid sample rate of {}, expected either 8000Hz or 16000Hz",
-                self.sample_rate
-            );
-        } else {
+        if has_resampler {
             Ok(())
+        } else {
+            if ![8000, 16000].contains(&self.sample_rate) {
+                bail!(
+                    "Invalid sample rate of {}, expected either 8000Hz or 16000Hz",
+                    self.sample_rate
+                );
+            } else {
+                Ok(())
+            }
         }
     }
 }
@@ -982,6 +992,27 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn validate_config() {
+        VadConfig::default().validate_config().unwrap();
+
+        let mut config = VadConfig::default();
+        config.sample_rate = 8000;
+
+        config.validate_config_internal(true).unwrap();
+        config.validate_config_internal(false).unwrap();
+
+        config.sample_rate = 9000;
+        config.validate_config_internal(true).unwrap();
+        assert!(config.validate_config_internal(false).is_err());
+
+        config.post_speech_pad = 2 * config.redemption_time;
+
+        assert!(config.validate_config().is_err());
+        assert!(config.validate_config_internal(false).is_err());
+        assert!(config.validate_config_internal(true).is_err());
     }
 
     /// If we change a config during runtime we should see that change reflected in subsequence
