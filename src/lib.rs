@@ -608,21 +608,30 @@ impl VadConfig {
     }
 
     pub fn validate_config(&self) -> Result<()> {
+        #[cfg(feature = "audio_resampler")]
+        const HAS_RESAMPLER: bool = true;
+        #[cfg(not(feature = "audio_resampler"))]
+        const HAS_RESAMPLER: bool = false;
+
+        self.validate_config_internal(HAS_RESAMPLER)
+    }
+
+    fn validate_config_internal(&self, has_resampler: bool) -> Result<()> {
         if self.post_speech_pad > self.redemption_time {
             bail!("post speech pad cannot be longer than redemption time")
         }
 
-        #[cfg(feature = "audio_resampler")]
-        return Ok(());
-
-        #[cfg(not(feature = "audio_resampler"))]
-        if ![8000, 16000].contains(&self.sample_rate) {
-            bail!(
-                "Invalid sample rate of {}, expected either 8000Hz or 16000Hz",
-                self.sample_rate
-            );
-        } else {
+        if has_resampler {
             Ok(())
+        } else {
+            if ![8000, 16000].contains(&self.sample_rate) {
+                bail!(
+                    "Invalid sample rate of {}, expected either 8000Hz or 16000Hz",
+                    self.sample_rate
+                );
+            } else {
+                Ok(())
+            }
         }
     }
 }
@@ -982,6 +991,27 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn validate_config() {
+        VadConfig::default().validate_config().unwrap();
+
+        let mut config = VadConfig::default();
+        config.sample_rate = 8000;
+
+        config.validate_config_internal(true).unwrap();
+        config.validate_config_internal(false).unwrap();
+
+        config.sample_rate = 9000;
+        config.validate_config_internal(true).unwrap();
+        assert!(config.validate_config_internal(false).is_err());
+
+        config.post_speech_pad = 2 * config.redemption_time;
+
+        assert!(config.validate_config().is_err());
+        assert!(config.validate_config_internal(false).is_err());
+        assert!(config.validate_config_internal(true).is_err());
     }
 
     /// If we change a config during runtime we should see that change reflected in subsequence
