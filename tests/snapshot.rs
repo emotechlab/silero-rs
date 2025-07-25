@@ -20,6 +20,7 @@ use silero::*;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tracing_test::traced_test;
 
 #[derive(Default, Debug, PartialEq, Deserialize, Serialize)]
@@ -36,6 +37,14 @@ struct Report {
     current_silence_samples: Vec<usize>,
     current_speech_samples: Vec<usize>,
     likelihoods: Vec<usize>,
+}
+
+#[test]
+#[traced_test]
+fn chunk_50_short_redemption_16k() {
+    let mut config = VadConfig::default();
+    config.redemption_time = Duration::from_millis(300);
+    run_snapshot_test(50, config, "short_redemption");
 }
 
 #[test]

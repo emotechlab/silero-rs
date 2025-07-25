@@ -484,7 +484,14 @@ impl VadSession {
     /// been applied.
     pub fn get_current_speech(&self) -> &[f32] {
         if let Some(speech_start) = self.speech_start_ms {
-            self.get_speech(speech_start, None)
+            if self
+                .duration_to_index(Duration::from_millis(speech_start as u64))
+                .is_some()
+            {
+                self.get_speech(speech_start, None)
+            } else {
+                &self.cached_active_speech
+            }
         } else {
             &self.cached_active_speech
         }
