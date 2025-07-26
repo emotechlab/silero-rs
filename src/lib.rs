@@ -335,8 +335,15 @@ impl VadSession {
 
                             // Since speech_end_ms does not include silent_samples, the post
                             // padding should be added to speech_end_ms.
-                            let speech_end_with_pad_ms =
+                            let mut speech_end_with_pad_ms =
                                 speech_end_ms + self.config.post_speech_pad.as_millis() as usize;
+
+                            let end_time_ms = self.session_time().as_millis() as usize;
+
+                            if end_time_ms < speech_end_with_pad_ms {
+                                trace!("Padding exceeds speech buffer, truncating cached speech");
+                                speech_end_with_pad_ms = end_time_ms;
+                            }
 
                             self.cached_active_speech = self
                                 .get_speech(start_ms, Some(speech_end_with_pad_ms))
