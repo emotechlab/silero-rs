@@ -383,7 +383,9 @@ impl VadSession {
         let last_index = if let Some(start_ms) = self.speech_start_ms {
             self.duration_to_index(Duration::from_millis(start_ms as u64))
         } else {
-            let remove_to = self.session_time().saturating_sub(self.config.pre_speech_pad);
+            let remove_to = self
+                .session_time()
+                .saturating_sub(self.config.pre_speech_pad);
             self.duration_to_index(remove_to)
         };
         if let Some(last_index) = last_index {
