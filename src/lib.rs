@@ -297,12 +297,16 @@ impl VadSession {
 
         match self.state {
             VadState::Silence => {
+                let start_ms = self
+                    .processed_duration()
+                    .saturating_sub(self.config.pre_speech_pad)
+                    .as_millis() as usize;
+                let deleted_end =
+                    self.samples_to_duration(self.deleted_samples).as_millis() as usize;
+                let start_ms = start_ms.max(deleted_end);
                 if prob > self.config.positive_speech_threshold {
                     self.state = VadState::Speech {
-                        start_ms: self
-                            .processed_duration()
-                            .saturating_sub(self.config.pre_speech_pad)
-                            .as_millis() as usize,
+                        start_ms: start_ms,
                         redemption_passed: false,
                         speech_time: Duration::ZERO,
                     };
@@ -335,8 +339,15 @@ impl VadSession {
 
                             // Since speech_end_ms does not include silent_samples, the post
                             // padding should be added to speech_end_ms.
-                            let speech_end_with_pad_ms =
+                            let mut speech_end_with_pad_ms =
                                 speech_end_ms + self.config.post_speech_pad.as_millis() as usize;
+
+                            let end_time_ms = self.session_time().as_millis() as usize;
+
+                            if end_time_ms < speech_end_with_pad_ms {
+                                trace!("Padding exceeds speech buffer, truncating cached speech");
+                                speech_end_with_pad_ms = end_time_ms;
+                            }
 
                             self.cached_active_speech = self
                                 .get_speech(start_ms, Some(speech_end_with_pad_ms))
@@ -376,7 +387,9 @@ impl VadSession {
         let last_index = if let Some(start_ms) = self.speech_start_ms {
             self.duration_to_index(Duration::from_millis(start_ms as u64))
         } else {
-            let remove_to = self.session_time() - self.config.pre_speech_pad;
+            let remove_to = self
+                .session_time()
+                .saturating_sub(self.config.pre_speech_pad);
             self.duration_to_index(remove_to)
         };
         if let Some(last_index) = last_index {
@@ -484,7 +497,14 @@ impl VadSession {
     /// been applied.
     pub fn get_current_speech(&self) -> &[f32] {
         if let Some(speech_start) = self.speech_start_ms {
-            self.get_speech(speech_start, None)
+            if self
+                .duration_to_index(Duration::from_millis(speech_start as u64))
+                .is_some()
+            {
+                self.get_speech(speech_start, None)
+            } else {
+                &self.cached_active_speech
+            }
         } else {
             &self.cached_active_speech
         }
@@ -754,6 +774,61 @@ mod tests {
             result.unwrap_err().downcast::<VadError>().unwrap(),
             VadError::InvalidData
         ));
+    }
+
+    #[test]
+    #[traced_test]
+    fn overlapping_segments() {
+        let mut samples: Vec<f32> = WavReader::open("tests/audio/sample_1_trimmed.wav")
+            .unwrap()
+            .into_samples()
+            .map(|x| {
+                let modified = x.unwrap_or(0i16) as f32 / (i16::MAX as f32);
+                modified.clamp(-1.0, 1.0)
+            })
+            .collect();
+
+        let og = samples.clone();
+
+        samples.resize(samples.len() + 2000, 0.0);
+        samples.extend_from_slice(&og);
+
+        let mut config = VadConfig::default();
+        config.redemption_time = Duration::from_millis(0);
+        config.pre_speech_pad = Duration::from_secs(1);
+        let mut session = VadSession::new(config.clone()).unwrap();
+
+        let chunk_size = 480; // 60ms
+        let max_chunks = samples.len() / chunk_size;
+
+        let mut last_end = None;
+
+        for i in 0..max_chunks {
+            let start = i * chunk_size;
+            let end = (start + chunk_size).min(samples.len());
+            let trans = session.process(&samples[start..end]).unwrap();
+
+            for transition in &trans {
+                match transition {
+                    VadTransition::SpeechStart { timestamp_ms } => {
+                        println!("Start time: {}ms", timestamp_ms);
+                        if let Some(last_end) = last_end {
+                            assert!(*timestamp_ms >= last_end, "segments are overlapping");
+                        }
+                    }
+                    VadTransition::SpeechEnd {
+                        start_timestamp_ms,
+                        end_timestamp_ms,
+                        ..
+                    } => {
+                        last_end = Some(*end_timestamp_ms);
+                        println!("End segment: {}-{}ms", start_timestamp_ms, end_timestamp_ms);
+                    }
+                }
+            }
+        }
+        // If this is going into the deleted speech buffer it'll panic
+        let _speech = session.get_current_speech();
     }
 
     /// Apply some audio with speech in and ensure that the take API works as expected
