@@ -174,6 +174,11 @@ impl VadSession {
         Self::new_from_bytes(model_bytes, config)
     }
 
+    /// Reserve the session audio buffer size by number of samples
+    pub fn reserve_audio_buffer(&mut self, samples: usize) {
+        self.session_audio.reserve(samples);
+    }
+
     pub fn validate_input(&self, audio_frame: &[f32]) -> Result<()> {
         if audio_frame
             .iter()
