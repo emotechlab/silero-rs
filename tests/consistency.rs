@@ -142,7 +142,6 @@ fn inner_vad_process(samples: Vec<f32>, chunks: ChunkStrategy, config: VadConfig
 
     while end < samples.len() {
         let chunk_size = chunks.get_chunk_size(&config);
-        chunk_sizes.push(chunk_size);
         end = samples.len().min(start + chunk_size);
 
         let mut transitions = session.process(&samples[start..end]).unwrap();
