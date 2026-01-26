@@ -4,6 +4,21 @@ use std::fmt;
 use std::path::Path;
 use tracing_test::traced_test;
 
+#[derive(Copy, Clone, Debug)]
+enum ChunkStrategy {
+    Fixed(usize),
+    Varying((usize, usize)),
+}
+
+impl ChunkStrategy {
+    fn get_chunk_size(&self, config: &VadConfig) -> usize {
+        match self {
+            Self::Fixed(size) => (config.sample_rate * size) / 1000 ,
+            Self::Varying((min, max)) => (config.sample_rate * fastrand::usize(min..max)) / 1000,
+        }
+    }
+}
+
 #[test]
 #[traced_test]
 fn compare_audio_1() {
@@ -44,16 +59,21 @@ fn compare_audio(audio: &Path) {
 
     let whole_file = silero_whole_file(audio, config.clone());
 
-    let chunks_30ms = silero_streaming(audio, 30, config.clone());
+    let chunks_30ms = silero_streaming(audio, ChunkStrategy::Fixed(30), config.clone());
     assert_eq!(whole_file, chunks_30ms);
 
     // 20ms initial remainder
-    let chunks_100ms = silero_streaming(audio, 100, config.clone());
+    let chunks_100ms = silero_streaming(audio, ChunkStrategy::Fixed(100), config.clone());
     assert_eq!(whole_file, chunks_100ms);
 
     // 1ms initial remainder
-    let chunks_35ms = silero_streaming(audio, 31, config.clone());
-    assert_eq!(whole_file, chunks_35ms);
+    let chunks_31ms = silero_streaming(audio, ChunkStrategy::Fixed(31), config.clone());
+    assert_eq!(whole_file, chunks_31ms);
+
+    // vary from 5-500ms chunks
+    let chunks_random= silero_streaming(audio, ChunkStrategy::Varying((5, 500)), config.clone());
+    assert_eq!(whole_file, chunks_random);
+    panic!();
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -91,11 +111,10 @@ fn silero_whole_file(audio: &Path, config: VadConfig) -> Vec<Segment> {
         .collect();
 
     let len = samples.len();
-    inner_vad_process(samples, len, config)
+    inner_vad_process(samples, ChunkStrategy::Fixed(len), config)
 }
 
-fn silero_streaming(audio: &Path, chunk_ms: usize, config: VadConfig) -> Vec<Segment> {
-    let chunk_size = (config.sample_rate * chunk_ms) / 1000;
+fn silero_streaming(audio: &Path, chunks: ChunkStrategy, config: VadConfig) -> Vec<Segment> {
     let step = if config.sample_rate == 16000 {
         1
     } else {
@@ -111,20 +130,20 @@ fn silero_streaming(audio: &Path, chunk_ms: usize, config: VadConfig) -> Vec<Seg
         })
         .collect();
 
-    inner_vad_process(samples, chunk_size, config)
+    inner_vad_process(samples, chunks, config)
 }
 
-fn inner_vad_process(samples: Vec<f32>, chunk_size: usize, config: VadConfig) -> Vec<Segment> {
+fn inner_vad_process(samples: Vec<f32>, chunks: ChunkStrategy, config: VadConfig) -> Vec<Segment> {
     let mut result = vec![];
     let mut session = VadSession::new(config.clone()).unwrap();
-    let num_chunks = samples.len() / chunk_size;
-    for i in 0..num_chunks {
-        let start = i * chunk_size;
-        let end = if i < num_chunks - 1 {
-            start + chunk_size
-        } else {
-            samples.len()
-        };
+
+    let mut start = 0;
+    let mut end = 0;
+
+    while end < samples.len() {
+        let chunk_size = chunks.get_chunk_size(&config);
+        chunk_sizes.push(chunk_size);
+        end = samples.len().min(start + chunk_size);
 
         let mut transitions = session.process(&samples[start..end]).unwrap();
         for transition in transitions.drain(..) {
@@ -145,6 +164,7 @@ fn inner_vad_process(samples: Vec<f32>, chunk_size: usize, config: VadConfig) ->
                 });
             }
         }
+        start = end;
     }
 
     if session.is_speaking() {
