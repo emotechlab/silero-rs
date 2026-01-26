@@ -1,4 +1,5 @@
-use rubato::{FftFixedIn, Resampler};
+use audioadapter_buffers::direct::InterleavedSlice;
+use rubato::{Fft, FixedSync, Resampler};
 use tracing::trace;
 
 /// Resample one channel of pcm data into desired sample rate.
@@ -18,17 +19,18 @@ pub fn resample_pcm(
         desired_sample_rate
     );
 
-    let mut resampler = FftFixedIn::new(
+    let mut resampler = Fft::new(
         original_sample_rate,
         desired_sample_rate,
         pcm_data.len(),
         pcm_data.len(), // I don't know what does sub_chunks mean, just a random choice.
         1,
+        FixedSync::Input,
     )?;
 
-    let waves_in = vec![pcm_data];
-    let mut waves_out = resampler.process(&waves_in, None)?;
-    Ok(waves_out.remove(0))
+    let waves_in = InterleavedSlice::new(&pcm_data, 1, pcm_data.len())?;
+    let waves_out = resampler.process(&waves_in, 0, None)?;
+    Ok(waves_out.take_data())
 }
 
 #[cfg(test)]
