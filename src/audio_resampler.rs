@@ -1,6 +1,6 @@
+use audioadapter_buffers::direct::InterleavedSlice;
 use rubato::{Fft, FixedSync, Resampler};
 use tracing::trace;
-use audioadapter_buffers::direct::InterleavedSlice;
 
 /// Resample one channel of pcm data into desired sample rate.
 pub fn resample_pcm(
