@@ -13,7 +13,7 @@ enum ChunkStrategy {
 impl ChunkStrategy {
     fn get_chunk_size(&self, config: &VadConfig) -> usize {
         match self {
-            Self::Fixed(size) => (config.sample_rate * size) / 1000 ,
+            Self::Fixed(size) => (config.sample_rate * size) / 1000,
             Self::Varying((min, max)) => (config.sample_rate * fastrand::usize(min..max)) / 1000,
         }
     }
@@ -71,7 +71,7 @@ fn compare_audio(audio: &Path) {
     assert_eq!(whole_file, chunks_31ms);
 
     // vary from 5-500ms chunks
-    let chunks_random= silero_streaming(audio, ChunkStrategy::Varying((5, 500)), config.clone());
+    let chunks_random = silero_streaming(audio, ChunkStrategy::Varying((5, 500)), config.clone());
     assert_eq!(whole_file, chunks_random);
     panic!();
 }
