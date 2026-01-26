@@ -73,7 +73,6 @@ fn compare_audio(audio: &Path) {
     // vary from 5-500ms chunks
     let chunks_random = silero_streaming(audio, ChunkStrategy::Varying((5, 500)), config.clone());
     assert_eq!(whole_file, chunks_random);
-    panic!();
 }
 
 #[derive(Clone, PartialEq, Eq)]
