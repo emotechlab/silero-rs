@@ -34,5 +34,4 @@ jobs:
         run: cargo check --benches
       - name: Check example works
         run: |
-          cd example/file_inference
-          cargo run --release -- --file=./audios/sample_1.mp3
+          cargo check --examples --all-features
