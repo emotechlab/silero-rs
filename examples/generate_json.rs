@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use silero::*;
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(Default, Debug, PartialEq)]
@@ -67,7 +67,7 @@ fn run_snapshot_test(chunk_ms: usize, args: Args) {
         negative_speech_threshold: args.negative_speech_threshold,
         pre_speech_pad: Duration::from_millis(args.pre_speech_pad_ms),
         post_speech_pad: Duration::from_millis(args.post_speech_pad_ms),
-        redemption_time: Duration::from_millis(args.redemption_time),
+        redemption_time: Duration::from_millis(args.redemption_time_ms),
         min_speech_time: Duration::from_millis(args.min_speech_time_ms),
         ..Default::default()
     };
