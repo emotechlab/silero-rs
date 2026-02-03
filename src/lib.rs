@@ -34,10 +34,10 @@ pub struct VadConfig {
 /// and feed the audio into it.
 pub struct VadSession {
     config: VadConfig,
-    model: Session, // TODO: would this be safe to share? does the runtime graph hold any state?
-    h_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
-    c_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
+    model: Session,
+    state_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
     sample_rate_tensor: ArrayBase<OwnedRepr<i64>, Ix1>,
+    context: Vec<f32>,
     state: VadState,
     session_audio: Vec<f32>,
     processed_samples: usize,
@@ -143,17 +143,22 @@ impl VadSession {
             .with_optimization_level(GraphOptimizationLevel::Level3)?
             .with_intra_threads(4)?
             .commit_from_memory(model_bytes)?;
-        let h_tensor = Array3::<f32>::zeros((2, 1, 64));
-        let c_tensor = Array3::<f32>::zeros((2, 1, 64));
+        let state_tensor = Array3::<f32>::zeros((2, 1, 128));
         let sample_rate_tensor = Array1::from_vec(vec![config.sample_rate as i64]);
+
+        let context_size = match config.sample_rate {
+            8000 => 32,
+            _ => 64, // If we have resampler we always resample to 16000
+        };
+        let context = vec![0.0; context_size];
 
         Ok(Self {
             config,
             model,
-            h_tensor,
-            c_tensor,
+            state_tensor,
             sample_rate_tensor,
             state: VadState::Silence,
+            context,
             session_audio: vec![],
             processed_samples: 0,
             deleted_samples: 0,
@@ -209,7 +214,7 @@ impl VadSession {
             audio_frame
         };
 
-        const VAD_BUFFER: Duration = Duration::from_millis(30); // TODO This should be configurable
+        const VAD_BUFFER: Duration = Duration::from_millis(32); // TODO This should be configurable
         let vad_segment_length = VAD_BUFFER.as_millis() as usize * self.config.sample_rate / 1000;
 
         let unprocessed = self.deleted_samples + self.session_audio.len() - self.processed_samples;
@@ -239,32 +244,29 @@ impl VadSession {
     }
 
     pub fn forward(&mut self, input: Vec<f32>) -> Result<ort::value::Value> {
-        let samples = input.len();
-        let audio_tensor = Array2::from_shape_vec((1, samples), input)?;
+        let mut padded_input = Vec::with_capacity(input.len() + self.context.len());
+        padded_input.extend_from_slice(self.context.as_slice());
+        padded_input.extend_from_slice(&input);
+        let padded_input = Array2::from_shape_vec((1, padded_input.len()), padded_input).unwrap();
+
         let mut result = self.model.run(ort::inputs![
-            TensorRef::from_array_view(audio_tensor.view())?,
+            TensorRef::from_array_view(padded_input.view())?,
+            TensorRef::from_array_view(self.state_tensor.view())?,
             TensorRef::from_array_view(self.sample_rate_tensor.view())?,
-            TensorRef::from_array_view(self.h_tensor.view())?,
-            TensorRef::from_array_view(self.c_tensor.view())?
         ])?;
 
         // Update internal state tensors.
-        self.h_tensor = result
-            .get("hn")
+        self.state_tensor = result
+            .get("stateN")
             .unwrap()
             .try_extract_array::<f32>()?
             .to_owned()
-            .into_shape_with_order((2, 1, 64))
-            .context("Shape mismatch for h_tensor")?;
+            .into_shape_with_order(self.state_tensor.dim())
+            .context("Shape mismatch for state_tensor")?;
 
-        self.c_tensor = result
-            .get("cn")
-            .unwrap()
-            .try_extract_array::<f32>()?
-            .to_owned()
-            .into_shape_with_order((2, 1, 64))
-            .context("Shape mismatch for h_tensor")?;
-
+        if input.len() >= self.context.len() {
+            self.context = input[(input.len() - self.context.len())..].to_vec();
+        }
         let prob_tensor = result.remove("output").unwrap();
         Ok(prob_tensor)
     }
@@ -543,8 +545,8 @@ impl VadSession {
     /// Reset the status of the model
     // TODO should this reset the audio buffer as well?
     pub fn reset(&mut self) {
-        self.h_tensor = Array3::<f32>::zeros((2, 1, 64));
-        self.c_tensor = Array3::<f32>::zeros((2, 1, 64));
+        self.state_tensor = Array3::<f32>::zeros((2, 1, 128));
+        self.context.fill(0.0);
         self.speech_start_ms = None;
         self.silent_samples = 0;
         self.state = VadState::Silence;
@@ -705,6 +707,7 @@ mod tests {
         let short_audio = vec![0.0; 160];
 
         session.session_audio = short_audio.clone();
+        println!("{:?}", session.process_internal(0..160));
         assert!(session.process_internal(0..160).is_err());
         session.session_audio.clear();
         assert!(session.process(&short_audio).unwrap().is_empty());
@@ -716,7 +719,7 @@ mod tests {
     #[traced_test]
     fn silence_handling() {
         let mut session = VadSession::new(VadConfig::default()).unwrap();
-        let silence = vec![0.0; 30 * 16]; // 30ms of silence
+        let silence = vec![0.0; 32 * 16]; // 30ms of silence
 
         assert!(session.process(&silence).unwrap().is_empty());
         assert_eq!(session.processed_samples, silence.len());
