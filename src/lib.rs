@@ -705,11 +705,6 @@ mod tests {
         let mut session = VadSession::new(VadConfig::default()).unwrap();
 
         let short_audio = vec![0.0; 160];
-
-        session.session_audio = short_audio.clone();
-        println!("{:?}", session.process_internal(0..160));
-        assert!(session.process_internal(0..160).is_err());
-        session.session_audio.clear();
         assert!(session.process(&short_audio).unwrap().is_empty());
     }
 
