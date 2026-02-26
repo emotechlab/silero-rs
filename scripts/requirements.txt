@@ -2,10 +2,10 @@ contourpy==1.2.1
 cycler==0.12.1
 fonttools==4.60.2
 kiwisolver==1.4.5
-matplotlib==3.9.2
+matplotlib==3.10.8
 numpy==2.1.0
 packaging==24.1
-pillow==10.4.0
+pillow==12.1.1
 pyparsing==3.1.2
 python-dateutil==2.9.0.post0
 six==1.16.0
