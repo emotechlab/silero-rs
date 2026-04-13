@@ -2,7 +2,7 @@
 #[cfg(feature = "audio_resampler")]
 pub use crate::audio_resampler::resample_pcm;
 pub use crate::errors::VadError;
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
 use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::TensorRef;
@@ -139,10 +139,14 @@ impl VadSession {
         if ![8000_usize, 16000].contains(&config.sample_rate) {
             bail!("Unsupported sample rate, use 8000 or 16000!");
         }
-        let model = Session::builder()?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?
-            .commit_from_memory(model_bytes)?;
+        let model = Session::builder()
+            .map_err(|e| anyhow!("{e}"))?
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| anyhow!("{e}"))?
+            .with_intra_threads(4)
+            .map_err(|e| anyhow!("{e}"))?
+            .commit_from_memory(model_bytes)
+            .map_err(|e| anyhow!("{e}"))?;
         let h_tensor = Array3::<f32>::zeros((2, 1, 64));
         let c_tensor = Array3::<f32>::zeros((2, 1, 64));
         let sample_rate_tensor = Array1::from_vec(vec![config.sample_rate as i64]);
@@ -242,17 +246,18 @@ impl VadSession {
         let samples = input.len();
         let audio_tensor = Array2::from_shape_vec((1, samples), input)?;
         let mut result = self.model.run(ort::inputs![
-            TensorRef::from_array_view(audio_tensor.view())?,
-            TensorRef::from_array_view(self.sample_rate_tensor.view())?,
-            TensorRef::from_array_view(self.h_tensor.view())?,
-            TensorRef::from_array_view(self.c_tensor.view())?
-        ])?;
+            TensorRef::from_array_view(audio_tensor.view()).map_err(|e| anyhow!("{e}"))?,
+            TensorRef::from_array_view(self.sample_rate_tensor.view()).map_err(|e| anyhow!("{e}"))?,
+            TensorRef::from_array_view(self.h_tensor.view()).map_err(|e| anyhow!("{e}"))?,
+            TensorRef::from_array_view(self.c_tensor.view()).map_err(|e| anyhow!("{e}"))?
+        ]).map_err(|e| anyhow!("{e}"))?;
 
         // Update internal state tensors.
         self.h_tensor = result
             .get("hn")
             .unwrap()
-            .try_extract_array::<f32>()?
+            .try_extract_array::<f32>()
+            .map_err(|e| anyhow!("{e}"))?
             .to_owned()
             .into_shape_with_order((2, 1, 64))
             .context("Shape mismatch for h_tensor")?;
@@ -260,10 +265,11 @@ impl VadSession {
         self.c_tensor = result
             .get("cn")
             .unwrap()
-            .try_extract_array::<f32>()?
+            .try_extract_array::<f32>()
+            .map_err(|e| anyhow!("{e}"))?
             .to_owned()
             .into_shape_with_order((2, 1, 64))
-            .context("Shape mismatch for h_tensor")?;
+            .context("Shape mismatch for c_tensor")?;
 
         let prob_tensor = result.remove("output").unwrap();
         Ok(prob_tensor)
@@ -281,7 +287,7 @@ impl VadSession {
 
         let result = self.forward(audio_frame)?;
 
-        let prob = *result.try_extract_array::<f32>().unwrap().first().unwrap();
+        let prob = *result.try_extract_array::<f32>().map_err(|e| anyhow!("{e}")).unwrap().first().unwrap();
 
         let mut vad_change = None;
 
