@@ -35,3 +35,33 @@ tracing-test = "0.2.5"
 [[bench]]
 name = "usage"
 harness = false
+
+# RTen's numeric kernels are prohibitively slow without optimization, which makes
+# debug-mode VAD tests unrepresentative. Keep this crate debuggable while building
+# the RTen runtime with release-style optimization.
+[profile.dev.package.rten]
+opt-level = 3
+
+[profile.dev.package.rten-base]
+opt-level = 3
+
+[profile.dev.package.rten-gemm]
+opt-level = 3
+
+[profile.dev.package.rten-onnx]
+opt-level = 3
+
+[profile.dev.package.rten-parallel]
+opt-level = 3
+
+[profile.dev.package.rten-shape-inference]
+opt-level = 3
+
+[profile.dev.package.rten-simd]
+opt-level = 3
+
+[profile.dev.package.rten-tensor]
+opt-level = 3
+
+[profile.dev.package.rten-vecmath]
+opt-level = 3
