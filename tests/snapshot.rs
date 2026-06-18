@@ -144,13 +144,8 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
                 .current_session_samples
                 .push(session.session_audio_samples());
 
-            if let Ok(network_outputs) = session.forward(samples[last_end..end].to_vec()) {
-                let prob = *network_outputs
-                    .try_extract_array::<f32>()
-                    .unwrap()
-                    .first()
-                    .unwrap()
-                    * 100.0;
+            if let Ok(prob) = session.speech_probability(&samples[last_end..end]) {
+                let prob = prob * 100.0;
                 report.likelihoods.push(prob as usize);
                 // Try and solve the too small inference issue
                 last_end = end;
