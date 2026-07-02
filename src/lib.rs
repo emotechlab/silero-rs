@@ -141,7 +141,7 @@ impl VadSession {
         }
         let model = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?
+            .with_intra_threads(1)?
             .commit_from_memory(model_bytes)?;
         let h_tensor = Array3::<f32>::zeros((2, 1, 64));
         let c_tensor = Array3::<f32>::zeros((2, 1, 64));
