@@ -54,6 +54,20 @@ fn compare_birds() {
     compare_audio(&audio);
 }
 
+/// Trimming silence after every streamed chunk must not change detected utterances.
+#[test]
+#[traced_test]
+fn trim_start_silence_preserves_segments() {
+    let audio = Path::new("tests/audio/sample_2.wav");
+    let config = VadConfig::default();
+    let chunks = ChunkStrategy::Fixed(100);
+
+    let untrimmed = silero_streaming(audio, chunks, config.clone());
+    let trimmed = silero_streaming_with_trimming(audio, chunks, config);
+
+    assert_eq!(untrimmed, trimmed);
+}
+
 fn compare_audio(audio: &Path) {
     let config = VadConfig::default();
 
@@ -110,10 +124,27 @@ fn silero_whole_file(audio: &Path, config: VadConfig) -> Vec<Segment> {
         .collect();
 
     let len = samples.len();
-    inner_vad_process(samples, ChunkStrategy::Fixed(len), config)
+    inner_vad_process(samples, ChunkStrategy::Fixed(len), config, false)
 }
 
 fn silero_streaming(audio: &Path, chunks: ChunkStrategy, config: VadConfig) -> Vec<Segment> {
+    silero_streaming_internal(audio, chunks, config, false)
+}
+
+fn silero_streaming_with_trimming(
+    audio: &Path,
+    chunks: ChunkStrategy,
+    config: VadConfig,
+) -> Vec<Segment> {
+    silero_streaming_internal(audio, chunks, config, true)
+}
+
+fn silero_streaming_internal(
+    audio: &Path,
+    chunks: ChunkStrategy,
+    config: VadConfig,
+    trim_start_silence: bool,
+) -> Vec<Segment> {
     let step = if config.sample_rate == 16000 {
         1
     } else {
@@ -129,10 +160,15 @@ fn silero_streaming(audio: &Path, chunks: ChunkStrategy, config: VadConfig) -> V
         })
         .collect();
 
-    inner_vad_process(samples, chunks, config)
+    inner_vad_process(samples, chunks, config, trim_start_silence)
 }
 
-fn inner_vad_process(samples: Vec<f32>, chunks: ChunkStrategy, config: VadConfig) -> Vec<Segment> {
+fn inner_vad_process(
+    samples: Vec<f32>,
+    chunks: ChunkStrategy,
+    config: VadConfig,
+    trim_start_silence: bool,
+) -> Vec<Segment> {
     let mut result = vec![];
     let mut session = VadSession::new(config.clone()).unwrap();
 
@@ -144,6 +180,9 @@ fn inner_vad_process(samples: Vec<f32>, chunks: ChunkStrategy, config: VadConfig
         end = samples.len().min(start + chunk_size);
 
         let mut transitions = session.process(&samples[start..end]).unwrap();
+        if trim_start_silence {
+            session.trim_start_silence();
+        }
         for transition in transitions.drain(..) {
             if let VadTransition::SpeechEnd {
                 start_timestamp_ms,
