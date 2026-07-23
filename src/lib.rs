@@ -389,15 +389,13 @@ impl VadSession {
     /// remove all audio up-to the utterance start. If it is not speaking it will keep silence
     /// equal to the pre-speech padding frames at the end.
     pub fn trim_start_silence(&mut self) {
-        let last_index = if let Some(start_ms) = self.speech_start_ms {
-            self.duration_to_index(Duration::from_millis(start_ms as u64))
-        } else {
-            let remove_to = self
-                .session_time()
-                .saturating_sub(self.config.pre_speech_pad);
-            self.duration_to_index(remove_to)
+        let remove_to = match self.state {
+            VadState::Speech { start_ms, .. } => Duration::from_millis(start_ms as u64),
+            VadState::Silence => self
+                .processed_duration()
+                .saturating_sub(self.config.pre_speech_pad),
         };
-        if let Some(last_index) = last_index {
+        if let Some(last_index) = self.duration_to_index(remove_to) {
             self.session_audio.drain(..last_index);
             self.deleted_samples += last_index;
         }
@@ -920,27 +918,26 @@ mod tests {
         session.take_until(Duration::from_millis(1001));
     }
 
-    /// If we just have silence we don't want to remove the padding silence
+    /// Repeatedly trimming a silent stream keeps the buffer bounded while retaining pre-speech
+    /// padding and any audio that has not yet been processed.
     #[test]
     #[traced_test]
-    fn trim_start_silence_keep_padding() {
+    fn trim_start_silence_bounds_silent_buffer() {
         let config = VadConfig::default();
         let mut session = VadSession::new(config.clone()).unwrap();
         let silence = vec![0.0; 16000];
-        let mut added_samples = 0;
-        while session.samples_to_duration(session.session_audio.len()) < config.pre_speech_pad * 2 {
-            added_samples += silence.len();
+
+        for _ in 0..60 {
             session.process(&silence).unwrap();
+            session.trim_start_silence();
         }
 
-        session.trim_start_silence();
-
         let (start, end) = session.current_buffer_range();
-        assert!(end - start == config.pre_speech_pad);
-        assert!(session.session_audio.len() < added_samples);
+        assert!(end - start >= config.pre_speech_pad);
+        assert!(end - start < config.pre_speech_pad + Duration::from_millis(30));
         assert_eq!(
-            added_samples - session.deleted_samples,
-            session.session_audio.len()
+            silence.len() * 60,
+            session.deleted_samples + session.session_audio.len()
         );
     }
 
