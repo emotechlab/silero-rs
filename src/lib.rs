@@ -28,6 +28,8 @@ pub struct VadConfig {
     pub redemption_time: Duration,
     pub sample_rate: usize,
     pub min_speech_time: Duration,
+    #[cfg_attr(feature = "serde", serde(default, skip))]
+    pub trim_start_audio: bool,
 }
 
 /// A VAD session create one of these for each audio stream you want to detect voice activity on
@@ -234,6 +236,9 @@ impl VadSession {
             if let Some(vad_ev) = vad_result {
                 transitions.push(vad_ev);
             }
+        }
+        if self.config.trim_start_audio {
+            self.trim_start_silence();
         }
         Ok(transitions)
     }
@@ -602,11 +607,52 @@ impl Default for VadConfig {
             redemption_time: Duration::from_millis(600),
             sample_rate: 16000,
             min_speech_time: Duration::from_millis(90),
+            trim_start_audio: false,
         }
     }
 }
 
 impl VadConfig {
+    pub fn with_positive_speech_threshold(mut self, threshold: f32) -> Self {
+        self.positive_speech_threshold = threshold;
+        self
+    }
+
+    pub fn with_negative_speech_threshold(mut self, threshold: f32) -> Self {
+        self.negative_speech_threshold = threshold;
+        self
+    }
+
+    pub fn with_pre_speech_pad(mut self, duration: Duration) -> Self {
+        self.pre_speech_pad = duration;
+        self
+    }
+
+    pub fn with_post_speech_pad(mut self, duration: Duration) -> Self {
+        self.post_speech_pad = duration;
+        self
+    }
+
+    pub fn with_redemption_time(mut self, duration: Duration) -> Self {
+        self.redemption_time = duration;
+        self
+    }
+
+    pub fn with_sample_rate(mut self, sample_rate: usize) -> Self {
+        self.sample_rate = sample_rate;
+        self
+    }
+
+    pub fn with_min_speech_time(mut self, duration: Duration) -> Self {
+        self.min_speech_time = duration;
+        self
+    }
+
+    pub fn with_trim_start_audio(mut self, enabled: bool) -> Self {
+        self.trim_start_audio = enabled;
+        self
+    }
+
     pub fn new(
         positive_speech_threshold: f32,
         negative_speech_threshold: f32,
@@ -615,6 +661,7 @@ impl VadConfig {
         redemption_time: Duration,
         sample_rate: usize,
         min_speech_time: Duration,
+        trim_start_audio: bool,
     ) -> Result<Self> {
         let config = VadConfig {
             positive_speech_threshold,
@@ -624,6 +671,7 @@ impl VadConfig {
             redemption_time,
             sample_rate,
             min_speech_time,
+            trim_start_audio,
         };
         match config.validate_config() {
             Ok(_) => Ok(config),
@@ -918,18 +966,17 @@ mod tests {
         session.take_until(Duration::from_millis(1001));
     }
 
-    /// Repeatedly trimming a silent stream keeps the buffer bounded while retaining pre-speech
-    /// padding and any audio that has not yet been processed.
+    /// Automatic trimming keeps a silent stream bounded while retaining pre-speech padding and any
+    /// audio that has not yet been processed.
     #[test]
     #[traced_test]
-    fn trim_start_silence_bounds_silent_buffer() {
-        let config = VadConfig::default();
+    fn automatic_trim_bounds_silent_buffer() {
+        let config = VadConfig::default().with_trim_start_audio(true);
         let mut session = VadSession::new(config.clone()).unwrap();
         let silence = vec![0.0; 16000];
 
         for _ in 0..60 {
             session.process(&silence).unwrap();
-            session.trim_start_silence();
         }
 
         let (start, end) = session.current_buffer_range();
@@ -939,6 +986,23 @@ mod tests {
             silence.len() * 60,
             session.deleted_samples + session.session_audio.len()
         );
+    }
+
+    /// Automatic trimming is opt-in so existing sessions retain their audio.
+    #[test]
+    #[traced_test]
+    fn automatic_trim_is_disabled_by_default() {
+        let config = VadConfig::default();
+        assert!(!config.trim_start_audio);
+
+        let mut session = VadSession::new(config).unwrap();
+        let silence = vec![0.0; 16000];
+        for _ in 0..3 {
+            session.process(&silence).unwrap();
+        }
+
+        assert_eq!(session.session_audio.len(), silence.len() * 3);
+        assert_eq!(session.deleted_samples, 0);
     }
 
     /// If we have speech in the current buffer then trimming silence shouldn't go beyond the start
@@ -1090,6 +1154,29 @@ mod tests {
         assert!(config.validate_config().is_err());
         assert!(config.validate_config_internal(false).is_err());
         assert!(config.validate_config_internal(true).is_err());
+    }
+
+    #[test]
+    fn fluent_config() {
+        let config = VadConfig::default()
+            .with_positive_speech_threshold(0.6)
+            .with_negative_speech_threshold(0.4)
+            .with_pre_speech_pad(Duration::from_millis(200))
+            .with_post_speech_pad(Duration::from_millis(100))
+            .with_redemption_time(Duration::from_millis(500))
+            .with_sample_rate(8000)
+            .with_min_speech_time(Duration::from_millis(120))
+            .with_trim_start_audio(true);
+
+        assert_eq!(config.positive_speech_threshold, 0.6);
+        assert_eq!(config.negative_speech_threshold, 0.4);
+        assert_eq!(config.pre_speech_pad, Duration::from_millis(200));
+        assert_eq!(config.post_speech_pad, Duration::from_millis(100));
+        assert_eq!(config.redemption_time, Duration::from_millis(500));
+        assert_eq!(config.sample_rate, 8000);
+        assert_eq!(config.min_speech_time, Duration::from_millis(120));
+        assert!(config.trim_start_audio);
+        config.validate_config().unwrap();
     }
 
     /// If we change a config during runtime we should see that change reflected in subsequence

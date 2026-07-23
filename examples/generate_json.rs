@@ -62,15 +62,13 @@ fn run_snapshot_test(_chunk_ms: usize, _args: Args) {
 
 #[cfg(feature = "serde")]
 fn run_snapshot_test(chunk_ms: usize, args: Args) {
-    let mut config = VadConfig {
-        positive_speech_threshold: args.positive_speech_threshold,
-        negative_speech_threshold: args.negative_speech_threshold,
-        pre_speech_pad: Duration::from_millis(args.pre_speech_pad_ms),
-        post_speech_pad: Duration::from_millis(args.post_speech_pad_ms),
-        redemption_time: Duration::from_millis(args.redemption_time_ms),
-        min_speech_time: Duration::from_millis(args.min_speech_time_ms),
-        ..Default::default()
-    };
+    let mut config = VadConfig::default()
+        .with_positive_speech_threshold(args.positive_speech_threshold)
+        .with_negative_speech_threshold(args.negative_speech_threshold)
+        .with_pre_speech_pad(Duration::from_millis(args.pre_speech_pad_ms))
+        .with_post_speech_pad(Duration::from_millis(args.post_speech_pad_ms))
+        .with_redemption_time(Duration::from_millis(args.redemption_time_ms))
+        .with_min_speech_time(Duration::from_millis(args.min_speech_time_ms));
 
     let mut summary = BTreeMap::new();
 

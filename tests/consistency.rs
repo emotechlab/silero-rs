@@ -124,27 +124,10 @@ fn silero_whole_file(audio: &Path, config: VadConfig) -> Vec<Segment> {
         .collect();
 
     let len = samples.len();
-    inner_vad_process(samples, ChunkStrategy::Fixed(len), config, false)
+    inner_vad_process(samples, ChunkStrategy::Fixed(len), config)
 }
 
 fn silero_streaming(audio: &Path, chunks: ChunkStrategy, config: VadConfig) -> Vec<Segment> {
-    silero_streaming_internal(audio, chunks, config, false)
-}
-
-fn silero_streaming_with_trimming(
-    audio: &Path,
-    chunks: ChunkStrategy,
-    config: VadConfig,
-) -> Vec<Segment> {
-    silero_streaming_internal(audio, chunks, config, true)
-}
-
-fn silero_streaming_internal(
-    audio: &Path,
-    chunks: ChunkStrategy,
-    config: VadConfig,
-    trim_start_silence: bool,
-) -> Vec<Segment> {
     let step = if config.sample_rate == 16000 {
         1
     } else {
@@ -160,15 +143,18 @@ fn silero_streaming_internal(
         })
         .collect();
 
-    inner_vad_process(samples, chunks, config, trim_start_silence)
+    inner_vad_process(samples, chunks, config)
 }
 
-fn inner_vad_process(
-    samples: Vec<f32>,
+fn silero_streaming_with_trimming(
+    audio: &Path,
     chunks: ChunkStrategy,
     config: VadConfig,
-    trim_start_silence: bool,
 ) -> Vec<Segment> {
+    silero_streaming(audio, chunks, config.with_trim_start_audio(true))
+}
+
+fn inner_vad_process(samples: Vec<f32>, chunks: ChunkStrategy, config: VadConfig) -> Vec<Segment> {
     let mut result = vec![];
     let mut session = VadSession::new(config.clone()).unwrap();
 
@@ -180,9 +166,6 @@ fn inner_vad_process(
         end = samples.len().min(start + chunk_size);
 
         let mut transitions = session.process(&samples[start..end]).unwrap();
-        if trim_start_silence {
-            session.trim_start_silence();
-        }
         for transition in transitions.drain(..) {
             if let VadTransition::SpeechEnd {
                 start_timestamp_ms,

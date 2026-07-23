@@ -1,5 +1,5 @@
 use hound::WavReader;
-use silero::VadSession;
+use silero::{VadConfig, VadSession};
 use std::time::Duration;
 
 fn main() {
@@ -8,9 +8,19 @@ fn main() {
 
 #[divan::bench(args = [20, 30, 50, 100])]
 fn process_file(chunk_ms: usize) {
+    process_file_with_config(chunk_ms, VadConfig::default());
+}
+
+#[divan::bench(args = [20, 30, 50, 100])]
+fn process_file_trim_start_audio(chunk_ms: usize) {
+    let config = VadConfig::default().with_trim_start_audio(true);
+    process_file_with_config(chunk_ms, config);
+}
+
+fn process_file_with_config(chunk_ms: usize, config: VadConfig) {
     let chunk_size = chunk_ms * 16; // 16000/1000
 
-    let mut session = VadSession::new(Default::default()).unwrap();
+    let mut session = VadSession::new(config).unwrap();
     let samples: Vec<f32> = WavReader::open("tests/audio/sample_2.wav")
         .unwrap()
         .into_samples()
