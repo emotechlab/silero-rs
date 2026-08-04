@@ -15,8 +15,7 @@ serde = ["dep:serde"]
 [dependencies]
 anyhow = "1.0.86"
 audioadapter-buffers = { version = "3.0.0", optional = true }
-ndarray = "0.16"
-ort = "=2.0.0-rc.10"
+rten = { version = "0.25", default-features = false, features = ["onnx_format"] }
 rubato = { version = "3.0.0", optional = true}
 serde = { version = "1.0.208", features = ["derive"], optional = true }
 thiserror = "2.0.4"
@@ -28,9 +27,41 @@ clap = { version = "4.5.54", features = ["derive"] }
 divan = "0.1.15"
 fastrand = "2.3.0"
 hound = "3.5.1"
+ndarray = "0.16"
+ort = "=2.0.0-rc.10"
 serde_json = "1.0.125"
 tracing-test = "0.2.5"
 
 [[bench]]
 name = "usage"
 harness = false
+
+# RTen's numeric kernels are prohibitively slow without optimization, which makes
+# debug-mode VAD tests unrepresentative. Keep this crate debuggable while building
+# the RTen runtime with release-style optimization.
+[profile.dev.package.rten]
+opt-level = 3
+
+[profile.dev.package.rten-base]
+opt-level = 3
+
+[profile.dev.package.rten-gemm]
+opt-level = 3
+
+[profile.dev.package.rten-onnx]
+opt-level = 3
+
+[profile.dev.package.rten-parallel]
+opt-level = 3
+
+[profile.dev.package.rten-shape-inference]
+opt-level = 3
+
+[profile.dev.package.rten-simd]
+opt-level = 3
+
+[profile.dev.package.rten-tensor]
+opt-level = 3
+
+[profile.dev.package.rten-vecmath]
+opt-level = 3

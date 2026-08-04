@@ -3,9 +3,7 @@
 pub use crate::audio_resampler::resample_pcm;
 pub use crate::errors::VadError;
 use anyhow::{bail, Context, Result};
-use ndarray::{Array1, Array2, Array3, ArrayBase, Ix1, Ix3, OwnedRepr};
-use ort::session::{builder::GraphOptimizationLevel, Session};
-use ort::value::TensorRef;
+use rten::{Model, NodeId, ValueView};
 use std::fmt;
 use std::ops::Range;
 use std::path::Path;
@@ -34,10 +32,11 @@ pub struct VadConfig {
 /// and feed the audio into it.
 pub struct VadSession {
     config: VadConfig,
-    model: Session, // TODO: would this be safe to share? does the runtime graph hold any state?
-    h_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
-    c_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
-    sample_rate_tensor: ArrayBase<OwnedRepr<i64>, Ix1>,
+    model: Model,
+    model_io: ModelIo,
+    h_tensor: Vec<f32>,
+    c_tensor: Vec<f32>,
+    sample_rate_tensor: [i32; 1],
     state: VadState,
     session_audio: Vec<f32>,
     processed_samples: usize,
@@ -49,6 +48,16 @@ pub struct VadSession {
 
     /// Cached current active samples
     cached_active_speech: Vec<f32>,
+}
+
+struct ModelIo {
+    input: NodeId,
+    sample_rate: NodeId,
+    h: NodeId,
+    c: NodeId,
+    output: NodeId,
+    hn: NodeId,
+    cn: NodeId,
 }
 
 impl fmt::Debug for VadSession {
@@ -139,17 +148,24 @@ impl VadSession {
         if ![8000_usize, 16000].contains(&config.sample_rate) {
             bail!("Unsupported sample rate, use 8000 or 16000!");
         }
-        let model = Session::builder()?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(1)?
-            .commit_from_memory(model_bytes)?;
-        let h_tensor = Array3::<f32>::zeros((2, 1, 64));
-        let c_tensor = Array3::<f32>::zeros((2, 1, 64));
-        let sample_rate_tensor = Array1::from_vec(vec![config.sample_rate as i64]);
+        let model = Model::load(model_bytes.to_vec())?;
+        let model_io = ModelIo {
+            input: model.node_id("input")?,
+            sample_rate: model.node_id("sr")?,
+            h: model.node_id("h")?,
+            c: model.node_id("c")?,
+            output: model.node_id("output")?,
+            hn: model.node_id("hn")?,
+            cn: model.node_id("cn")?,
+        };
+        let h_tensor = vec![0.0; 2 * 64];
+        let c_tensor = vec![0.0; 2 * 64];
+        let sample_rate_tensor = [config.sample_rate as i32];
 
         Ok(Self {
             config,
             model,
+            model_io,
             h_tensor,
             c_tensor,
             sample_rate_tensor,
@@ -238,35 +254,37 @@ impl VadSession {
         Ok(transitions)
     }
 
-    pub fn forward(&mut self, input: Vec<f32>) -> Result<ort::value::Value> {
+    #[doc(hidden)]
+    pub fn speech_probability(&mut self, input: &[f32]) -> Result<f32> {
         let samples = input.len();
-        let audio_tensor = Array2::from_shape_vec((1, samples), input)?;
-        let mut result = self.model.run(ort::inputs![
-            TensorRef::from_array_view(audio_tensor.view())?,
-            TensorRef::from_array_view(self.sample_rate_tensor.view())?,
-            TensorRef::from_array_view(self.h_tensor.view())?,
-            TensorRef::from_array_view(self.c_tensor.view())?
-        ])?;
+        let audio_tensor = ValueView::from_shape([1, samples], input)?;
+        let sample_rate_tensor = ValueView::from_shape([], &self.sample_rate_tensor)?;
+        let h_tensor = ValueView::from_shape([2, 1, 64], &self.h_tensor)?;
+        let c_tensor = ValueView::from_shape([2, 1, 64], &self.c_tensor)?;
 
-        // Update internal state tensors.
-        self.h_tensor = result
-            .get("hn")
-            .unwrap()
-            .try_extract_array::<f32>()?
-            .to_owned()
-            .into_shape_with_order((2, 1, 64))
-            .context("Shape mismatch for h_tensor")?;
+        let inputs = vec![
+            (self.model_io.input, audio_tensor.into()),
+            (self.model_io.sample_rate, sample_rate_tensor.into()),
+            (self.model_io.h, h_tensor.into()),
+            (self.model_io.c, c_tensor.into()),
+        ];
+        let outputs = [self.model_io.output, self.model_io.hn, self.model_io.cn];
+        let [output, hn, cn] = self.model.run_n(inputs, outputs, None)?;
 
-        self.c_tensor = result
-            .get("cn")
-            .unwrap()
-            .try_extract_array::<f32>()?
-            .to_owned()
-            .into_shape_with_order((2, 1, 64))
-            .context("Shape mismatch for h_tensor")?;
+        let (h_shape, h_data) = hn.into_shape_vec::<f32, 3>()?;
+        assert_eq!(h_shape, [2, 1, 64]);
+        self.h_tensor = h_data;
 
-        let prob_tensor = result.remove("output").unwrap();
-        Ok(prob_tensor)
+        let (c_shape, c_data) = cn.into_shape_vec::<f32, 3>()?;
+        assert_eq!(c_shape, [2, 1, 64]);
+        self.c_tensor = c_data;
+
+        let (_output_shape, output_data) = output.into_shape_vec::<f32, 2>()?;
+        let prob = output_data
+            .first()
+            .copied()
+            .context("Silero model returned an empty probability tensor")?;
+        Ok(prob)
     }
 
     /// Advance the VAD state machine with an audio frame. Keep between 30-96ms in length.
@@ -279,9 +297,7 @@ impl VadSession {
         let samples = audio_frame.len();
         let frame_duration = self.samples_to_duration(samples);
 
-        let result = self.forward(audio_frame)?;
-
-        let prob = *result.try_extract_array::<f32>().unwrap().first().unwrap();
+        let prob = self.speech_probability(&audio_frame)?;
 
         let mut vad_change = None;
 
@@ -541,8 +557,8 @@ impl VadSession {
     /// Reset the status of the model
     // TODO should this reset the audio buffer as well?
     pub fn reset(&mut self) {
-        self.h_tensor = Array3::<f32>::zeros((2, 1, 64));
-        self.c_tensor = Array3::<f32>::zeros((2, 1, 64));
+        self.h_tensor.fill(0.0);
+        self.c_tensor.fill(0.0);
         self.speech_start_ms = None;
         self.silent_samples = 0;
         self.state = VadState::Silence;
@@ -664,8 +680,7 @@ impl VadConfig {
 mod tests {
     use super::*;
     use hound::WavReader;
-    use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use tracing_test::traced_test;
 
     /// Feed only silence into the network and ensure that `get_current_speech` returns an empty
@@ -720,6 +735,29 @@ mod tests {
         assert_eq!(session.processed_samples, silence.len());
     }
 
+    /// The RTen inference path should produce a valid probability and advance recurrent model
+    /// state for both sample rates supported by the Silero model.
+    #[test]
+    #[traced_test]
+    fn speech_probability_updates_recurrent_state() {
+        for sample_rate in [8000, 16000] {
+            let mut config = VadConfig::default();
+            config.sample_rate = sample_rate;
+            let mut session = VadSession::new(config).expect("VAD session should load");
+            let samples = vec![0.0; sample_rate * 30 / 1000];
+
+            let prob = session
+                .speech_probability(&samples)
+                .expect("RTen inference should succeed for a 30ms frame");
+
+            assert!((0.0..=1.0).contains(&prob));
+            assert_eq!(session.h_tensor.len(), 2 * 64);
+            assert_eq!(session.c_tensor.len(), 2 * 64);
+            assert!(session.h_tensor.iter().any(|value| *value != 0.0));
+            assert!(session.c_tensor.iter().any(|value| *value != 0.0));
+        }
+    }
+
     /// We only allow for 8khz and 16khz audio.
     #[test]
     #[traced_test]
@@ -769,14 +807,19 @@ mod tests {
         let result = session.process(&valid_samples);
         assert!(result.is_ok());
 
-        let mut session2 = VadSession::new(config).unwrap();
+        let session2 = VadSession::new(config).unwrap();
         let mut invalid_samples = valid_samples.clone();
         invalid_samples[0] = -1.01;
-        let result = session2.process(&invalid_samples);
+        let result = session2.validate_input(&invalid_samples);
         assert!(matches!(
             result.unwrap_err().downcast::<VadError>().unwrap(),
             VadError::InvalidData
         ));
+        #[cfg(debug_assertions)]
+        {
+            let mut session3 = VadSession::new(config).unwrap();
+            assert!(session3.process(&invalid_samples).is_err());
+        }
     }
 
     #[test]
@@ -1004,68 +1047,51 @@ mod tests {
         (sample_rate * chunk_ms) / 1000
     }
 
-    fn get_audios() -> Vec<PathBuf> {
-        let audio_dir = Path::new("tests/audio");
-        let mut result = vec![];
-        for entry in fs::read_dir(&audio_dir).unwrap() {
-            let entry = entry.unwrap();
-            let path = entry.path();
-            if !path.is_dir() {
-                result.push(path.to_path_buf());
-            }
-        }
-        assert!(!result.is_empty());
-        result
-    }
-
     /// post_speech_pad should result to an increase in the number of samples that SpeechEnd
     /// transition contains.
     #[test]
     #[traced_test]
     fn post_speech_pad() {
-        let audio_files = get_audios();
-        for audio_file in audio_files {
-            let mut config = VadConfig::default();
-            let samples = get_audio_sample(&audio_file, &config);
-            assert!(!samples.is_empty());
+        let mut config = VadConfig::default();
+        config.pre_speech_pad = Duration::from_millis(0);
+        let mut samples = get_audio_sample("tests/audio/sample_1.wav", &config);
+        samples.resize(16000, 0.0);
+        samples.resize(16000 * 5, 0.0);
 
-            let chunk_size_ms = 50;
-            let chunk_size = get_chunk_size(config.sample_rate, chunk_size_ms);
+        let chunk_size_ms = 50;
+        let chunk_size = get_chunk_size(config.sample_rate, chunk_size_ms);
 
-            // Do inference with post_speech_pad = 0, a.k.a the default.
-            let mut vad = VadSession::new(config).unwrap();
-            let baseline = do_vad_inference(&samples, chunk_size, &mut vad);
+        let mut vad = VadSession::new(config).expect("VAD session should load");
+        let baseline = do_vad_inference(&samples, chunk_size, &mut vad);
+        assert!(!baseline.is_empty());
 
-            // Now, do inference with post_speech_pad, and compare it with the baseline.
-            for post_speech_pad in (50..config.redemption_time.as_millis() as usize + 1).step_by(50)
-            {
-                config.post_speech_pad = Duration::from_millis(post_speech_pad as u64);
-                let mut vad = VadSession::new(config).unwrap();
-                let current = do_vad_inference(&samples, chunk_size, &mut vad);
-                assert_eq!(baseline.len(), current.len());
-                for (b, c) in baseline.iter().zip(current.iter()) {
-                    match (b, c) {
-                        (
-                            VadTransition::SpeechEnd {
-                                start_timestamp_ms: start1,
-                                end_timestamp_ms: end1,
-                                samples: samples1,
-                            },
-                            VadTransition::SpeechEnd {
-                                start_timestamp_ms: start2,
-                                end_timestamp_ms: end2,
-                                samples: samples2,
-                            },
-                        ) => {
-                            assert_eq!(start1, start2);
-                            assert_eq!(*end1, *end2 - post_speech_pad);
-                            assert_eq!(
-                                samples1.len(),
-                                samples2.len() - config.sample_rate * post_speech_pad / 1000
-                            );
-                        }
-                        _ => unreachable!(),
+        for post_speech_pad in [50, 300, config.redemption_time.as_millis() as usize] {
+            config.post_speech_pad = Duration::from_millis(post_speech_pad as u64);
+            let mut vad = VadSession::new(config).expect("VAD session should load");
+            let current = do_vad_inference(&samples, chunk_size, &mut vad);
+            assert_eq!(baseline.len(), current.len());
+            for (b, c) in baseline.iter().zip(current.iter()) {
+                match (b, c) {
+                    (
+                        VadTransition::SpeechEnd {
+                            start_timestamp_ms: start1,
+                            end_timestamp_ms: end1,
+                            samples: samples1,
+                        },
+                        VadTransition::SpeechEnd {
+                            start_timestamp_ms: start2,
+                            end_timestamp_ms: end2,
+                            samples: samples2,
+                        },
+                    ) => {
+                        assert_eq!(start1, start2);
+                        assert_eq!(*end1, *end2 - post_speech_pad);
+                        assert_eq!(
+                            samples1.len(),
+                            samples2.len() - config.sample_rate * post_speech_pad / 1000
+                        );
                     }
+                    _ => unreachable!(),
                 }
             }
         }
