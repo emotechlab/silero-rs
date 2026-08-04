@@ -23,6 +23,20 @@ jobs:
         run: cargo fmt --check
       - name: Cargo test
         run: cargo test --all-features
+      - name: Snapshot failure diagnostics
+        if: failure()
+        run: |
+          lscpu
+          rustc -Vv
+          cargo tree --all-features
+      - name: Upload snapshot failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-failure-${{ github.run_id }}
+          path: |
+            target/*.json
+            Cargo.lock
       - uses: taiki-e/install-action@cargo-hack
       - name: Cargo build
         run: |
