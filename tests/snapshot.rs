@@ -147,14 +147,9 @@ fn run_snapshot_test(chunk_ms: usize, config: VadConfig, config_name: &str) {
         let mut likelihood_session =
             VadSession::new(config.clone()).expect("Failed to create likelihood session");
         for frame in samples.chunks_exact(get_chunk_size(config.sample_rate, 32)) {
-            let network_outputs = likelihood_session
-                .forward(frame.to_vec())
-                .expect("Inference failed for a 32 ms audio frame");
-            let prob = *network_outputs
-                .try_extract_array::<f32>()
-                .expect("Model output is not an f32 array")
-                .first()
-                .expect("Model output is empty")
+            let prob = likelihood_session
+                .speech_probability(frame)
+                .expect("Inference failed for a 32 ms audio frame")
                 * 100.0;
             report.likelihoods.push(prob as usize);
         }
