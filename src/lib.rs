@@ -271,7 +271,9 @@ impl VadSession {
         assert_eq!(state_shape, [2, 1, 128]);
         self.state_tensor = state_data;
         if input.len() >= self.context.len() {
-            self.context.copy_from_slice(&input[input.len() - self.context.len()..]);
+            let context_len = self.context.len();
+            self.context
+                .copy_from_slice(&input[input.len() - context_len..]);
         }
 
         let (_output_shape, output_data) = output.into_shape_vec::<f32, 2>()?;

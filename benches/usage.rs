@@ -109,8 +109,8 @@ fn read_wav(path: &str) -> Vec<f32> {
 
 struct OrtVadSession {
     model: Session,
-    h_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
-    c_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
+    state_tensor: ArrayBase<OwnedRepr<f32>, Ix3>,
+    context: Vec<f32>,
     sample_rate_tensor: ArrayBase<OwnedRepr<i64>, Ix1>,
 }
 
@@ -118,46 +118,40 @@ impl OrtVadSession {
     fn new(sample_rate: usize) -> Self {
         Self {
             model: ort_session_from_bytes(),
-            h_tensor: Array3::<f32>::zeros((2, 1, 64)),
-            c_tensor: Array3::<f32>::zeros((2, 1, 64)),
+            state_tensor: Array3::<f32>::zeros((2, 1, 128)),
+            context: vec![0.0; if sample_rate == 8000 { 32 } else { 64 }],
             sample_rate_tensor: Array1::from_vec(vec![sample_rate as i64]),
         }
     }
 
     fn forward(&mut self, input: &[f32]) -> f32 {
-        let audio_tensor = Array2::from_shape_vec((1, input.len()), input.to_vec())
+        let mut padded_input = self.context.clone();
+        padded_input.extend_from_slice(input);
+        let audio_tensor = Array2::from_shape_vec((1, padded_input.len()), padded_input)
             .expect("benchmark frame should match tensor shape");
         let mut result = self
             .model
             .run(ort::inputs![
                 TensorRef::from_array_view(audio_tensor.view())
                     .expect("audio tensor should convert to ORT input"),
+                TensorRef::from_array_view(self.state_tensor.view())
+                    .expect("state tensor should convert to ORT input"),
                 TensorRef::from_array_view(self.sample_rate_tensor.view())
-                    .expect("sample-rate tensor should convert to ORT input"),
-                TensorRef::from_array_view(self.h_tensor.view())
-                    .expect("h tensor should convert to ORT input"),
-                TensorRef::from_array_view(self.c_tensor.view())
-                    .expect("c tensor should convert to ORT input")
+                    .expect("sample-rate tensor should convert to ORT input")
             ])
             .expect("ORT inference should succeed");
 
-        self.h_tensor = result
-            .get("hn")
-            .expect("ORT output should contain hn")
+        self.state_tensor = result
+            .get("stateN")
+            .expect("ORT output should contain stateN")
             .try_extract_array::<f32>()
-            .expect("hn should be an f32 tensor")
+            .expect("stateN should be an f32 tensor")
             .to_owned()
-            .into_shape_with_order((2, 1, 64))
-            .expect("hn should have recurrent state shape");
-
-        self.c_tensor = result
-            .get("cn")
-            .expect("ORT output should contain cn")
-            .try_extract_array::<f32>()
-            .expect("cn should be an f32 tensor")
-            .to_owned()
-            .into_shape_with_order((2, 1, 64))
-            .expect("cn should have recurrent state shape");
+            .into_shape_with_order((2, 1, 128))
+            .expect("stateN should have recurrent state shape");
+        let context_len = self.context.len();
+        self.context
+            .copy_from_slice(&input[input.len() - context_len..]);
 
         let output = result
             .remove("output")
